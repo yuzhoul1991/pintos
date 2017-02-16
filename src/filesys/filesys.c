@@ -10,12 +10,28 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 
+/* Filesys lock */
+static struct lock lock;
+
 static void do_format (void);
+
+/* filesys api for locking and unlocking */
+void
+filesys_lock (void)
+{
+  lock_acquire (&lock);
+}
+
+void
+filesys_unlock (void)
+{
+  lock_release (&lock);
+}
 
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
 void
-filesys_init (bool format) 
+filesys_init (bool format)
 {
   fs_device = block_get_role (BLOCK_FILESYS);
   if (fs_device == NULL)
@@ -24,16 +40,23 @@ filesys_init (bool format)
   inode_init ();
   free_map_init ();
 
-  if (format) 
+  if (format)
     do_format ();
 
   free_map_open ();
 }
 
+/* initializes filesys_lock */
+void
+filesys_lock_init (void)
+{
+  lock_init (&lock);
+}
+
 /* Shuts down the file system module, writing any unwritten data
    to disk. */
 void
-filesys_done (void) 
+filesys_done (void)
 {
   free_map_close ();
 }
@@ -43,7 +66,7 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size) 
+filesys_create (const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
   struct dir *dir = dir_open_root ();
@@ -51,7 +74,7 @@ filesys_create (const char *name, off_t initial_size)
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size)
                   && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
+  if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   dir_close (dir);
 
@@ -81,11 +104,11 @@ filesys_open (const char *name)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *name)
 {
   struct dir *dir = dir_open_root ();
   bool success = dir != NULL && dir_remove (dir, name);
-  dir_close (dir); 
+  dir_close (dir);
 
   return success;
 }

@@ -1,0 +1,382 @@
++--------------------------+
+|		CS 140		|
+| PROJECT 2: USER PROGRAMS	|
+| 	   DESIGN DOCUMENT     	|
++--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Yuzhou Liu          <yuzhoul@stanford.edu>
+Haran Chidambaram   <haranpc@stanford.edu>
+Jayadev Velagandula <jayadevv@stanford.edu>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+None
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+https://linux.die.net/man/3/strtok_r
+
+
+			   ARGUMENT PASSING
+			   ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+None
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+Once received the full command line, the string is tokenized and put into
+arrays and passed to setup_stack function. To ensure the argv[] elements
+are pushed onto the stack in the right order. We used a local variable
+argv_address[argc] to save off the address of arguments as they are pushed to the
+stack. When pushing arguments to the stack, we are pushing from right to left
+or in other words, we populates argv_address from argc to 0 index.
+After alignment padding, the content of the argv_address array is pushed
+to the stack from index argc to 0, thus ensures the correct sequence of arguments.
+
+To void overflow the stack, we set a hard limit for this project that arguments
+can at most take up to 2 pages. And we use a function to calculate total_pages
+needed before we allocate any page or push any arguments to the stack. Thus ensure
+the arguments would fit into maximun of 2 pages.
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+As per man page strtok() function uses a static buffer for string pasring,
+so it is not thread safe to use it unless interrupts are disabled,
+which is not desirable.
+
+strtok_r() uses local variable saveptr which points to character so it is
+thread safe(during thread switch string won't be corrupted)
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+1. Time spent in kernel gets reduced
+2. More flexibility can be provided by shell in terms of arg parsing as appose
+   to hardcode parsing in the kernel. Different shells can have different
+	 rule for user program argument format.
+
+			     SYSTEM CALLS
+			     ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+The file_info struct represents a file descriptor for this process.
+It is an element in the fd_list in the thread struct.
+
+struct file_info
+  {
+    int fd;                      /* fd of the opened file */
+    struct file *file_ptr;       /* pointer to the file opened */
+    struct list_elem file_elem;  /* List element for fd_list list. */
+  };
+
+The child_info struct represents a child process of this process.
+It is an element in the child_list in the thread struct.
+
+struct child_info
+  {
+   tid_t tid;                        /* tid of the child process */
+   bool loaded;                      /* Indicates if the child process loaded succesfully*/
+   int exit_status;                  /* Indicates if the child process exit status */
+   struct thread *child_thread;      /* Reference to child thread struct */
+   struct list_elem child_elem;      /* List element for child_list */
+   struct semaphore sema_load;        /* Semaphore to wait for to get updated loaded value */
+   struct semaphore sema_exit;        /* Semaphore to wait for to get updated exit_status value */
+  };
+
+The following members were added to the thread struct:
+
+//used to assign uniq fd number:
+int total_fds;
+
+// list to keep track of all files opened
+struct list fd_list;
+
+// list to keep track of all child processes
+struct list child_list;
+
+// most recent child created so that can wait for it's load to finish
+struct child_info* recent_child;
+
+// pointer to the child_info element in the parent process's child_list
+// used to up the semaphores in that struct
+struct child_info* parent_child_info;
+
+// pointer to the file struct for the executable of this process
+// used in process_exit to close the file
+struct file *executable;
+
+// process name
+char process_name[128];
+
+// exit status of the process
+int exit_status;
+
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+File descriptors are unique only within a single process. In each process'
+thread struct a file_list is maintained which has elements of type file_info.
+The file_info struct associates the file descriptor number to the file struct.
+Each process assigns unique file descriptor numbers within the process and
+maintains their file_list independent of each other. In other words, different
+file descriptors in different process can be referencing to the same file on the
+file system.
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+We went with the easier approach mentioned in the assignment spec where
+when we retrieve pointer values pushed by the user program on the stack.
+It is checked to pass the following code:
+
+if (check_ptr == NULL
+		|| !is_user_vaddr (check_ptr)
+		|| pagedir_get_page (t_current->pagedir, check_ptr) == NULL)
+	thread_exit ();
+
+Namely before a pointer is dereferenced, we make sure it is not NULL,
+and it is a valid user virtual address, and we make sure the page directory
+correspond to that virtual address is valid.
+
+In several system calls where the user passes a buffer base address and a size
+argument. The base address is first checked with above criteria and then the base
+address is rounded down to the nearest page boundary. A while loop is used to check
+all pages covered by the range of address defined by base address and size are valid.
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+When copying a full page, the least number of inspection is 1 if the full page
+is aligned to page size boundary. The least number of inspections is 1 if
+the starting address of the buffer is aligned with page size in virtual memory.
+The greatest is 2 if the range of the addresses covered by the full page is acrossing
+page size boundary.
+
+The same holds true in the case of copying 2 bytes of data.
+
+We believe a maximum of 2 page inspection is pretty good for any random address range
+less than or equal to a page size. If have to reduce to 1 look up only you can
+potentially provide api to user so that they only put stuff on page boundary but that
+would introduce lots of internal fragmentation.
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+The wait system call just calls the process_wait function by passing
+the argument as the child process id. Inside the process wait function
+we use the passed in process id to get the child_info struct reference.
+
+If child_list is empty or cannot find the child_info struct correspond
+to the process id in the child_list of the parent process. -1 is returned immediately.
+
+The child_info struct contains a semaphore 'sema_exit', which is downed
+by the waiting process and upped by the child thread being waited once it
+is finished or killed by kernel and the exit_status value in the child_info
+struct has been updated. This semaphore solves the synchronization problem
+between the parent process and the child process.
+
+After the semaphore has been successfully downed, it means the child process
+is done and the exit_status member of the child_info struct reflects the
+final status. The exit_status is recorded and the child_info struct for this
+child is yanked from the child_list of the parent and freed. This guarantees
+the next time wait is called again with the same child id. The system call would
+return -1.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+1. Isolation of error handling and main functionality.
+
+In userprog/syscall.c, we isolated the error handling and pointer dereference
+and arithmetic into sub functions so that it does not obscure the implementation
+of primary functionality.
+
+The main system call handler remains straightforward and clear with a switch statement
+on the system call number. Inside each case statement, the arguments are retrieved with
+checking and then passed to corresponding static local funtion to handle specific
+functionality of this system call.
+
+The sub functions we implemented are listed here:
+
+1. syscall_get_number // get system call number from stack
+2. syscall_get_arg    // get user arguments to system call
+3. syscall_check_valid_user_pointer // low level function to check valid ptr
+4. syscall_check_valid_user_buffer // low level function to check valid ptr
+		and size.
+5. syscall_<syscall_name>  // syscall specific local function that handles specific
+		functionality.
+
+A concrete example:
+
+1. syscall_handler(f) invoked.
+2. syscall_get_number(f) -> check f->esp valid and dereference to get syscall number
+3. assume it is the SYS_WRITE
+4. following code is executed:
+		a. all three arguments are retrieved with validity checking on stack pointers
+		b. If the argument itself is a buffer or pointer, validity is checked
+		c. syscall_write is called with validated arguments which handles SYS_WRITE functionality
+
+    case(SYS_WRITE):
+      fd = (int)syscall_get_arg(f, 4);
+      buffer = (void*)syscall_get_arg(f, 8);
+      file_size = (unsigned)syscall_get_arg(f, 12);
+
+      syscall_check_valid_user_buffer(buffer, file_size);
+
+      f->eax = syscall_write(fd, buffer, file_size);
+      break;
+
+
+2. Freeing resources when error is detected.
+
+In all the functions mentioned above that validates pointers, if the check fails, thread_exit
+function is called on the current thread, which in turn calls process_exit function.
+
+In both of these functions, the following lists in the thread struct are examined and list
+elements are freed.
+
+fd_list
+child_list
+
+semaphore used to synchronize between parent and child process are upped so that the parent
+is unblocked from sema_down. The provided code already took care of deactivate and destroy
+data structure related to paging and eventually the thread that represents the user process is
+marked as THREAD_DYING and eventually the page where the thread struct itself resides is
+freed.
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+Every time a child is created, a new object of child_info struct is created and added to parent's child_list. 
+The created child also keeps track of this child_info object(This is easy to maintain as a child can have only one parent).
+A semaphore named sema_load is part of the child_info struct. This semaphore is used in synchronizing the "loading" info
+between parent and child. This semaphore is always initialized to 0(This is to mimic child holding the semaphore). 
+Once the parent spawns a child, it enters into a function named process_wait_for_load() and tries to acquire sema_load. 
+But semaphore is held by the child and the child releases the semaphore only after it finishes "loading" and 
+updated its status to 'loaded' member(part of child_info struct). 
+When the parent finally acquires the semaphore and reads 'loaded', it will know if the child's loading process is successful or not.  
+ 
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+Every parent P has an object to struct child_info corresponding to child C. The child C also keeps a pointer to this object(C's "parent_child_info" is the pointer to this child_info).
+The three members of child_info which are used for proper functioning of wait() are int exit_status(corresponding to exit status of child), semaphore sema_exit(semaphore to synchronize access to exit_status), 
+struct thread * child_thread(pointer to child thread). Parent creates child_info when it spawns the child. The created child_info initializes sema_exit to 0(This is to mimic child holding the semaphore) and 
+initializes exit_status to -1.
+
+P calls wait(C) before child exits - P tries to acquire sema_exit. As the semaphore is being held by C, it goes to sleep. When C eventually exits, it will update exit status, make child_thread pointer to
+ 	                             NULL and release sema_exit.
+                                     P then acquires sema_exit and accesses exit_status, thus getting C's exit status. After every successful wait, the child_info is removed from P's child_list. 
+                                     This prevents P from waiting for C twice.
+
+P calls wait(C) after child exits -  When C exits, it will update exit status, make child_thread pointer to NULL and release sema_exit. Later when P tries to acquire sema_exit, it will be successful and
+ 	                             it accesses exit_status of child. 
+                                     After this successful wait, the child_info is removed from P's child_list.
+
+P terminates without waiting, before C exits - When P exits, it will find child_info corresponding to C in its child_list. Had P waited for C previously, this child_info would not be present. 
+                                               So P knows that it is going to exit without waiting for C. child_info has pointer to C's thread. It will use the pointer to make C's "parent_child_info" as
+       					       NULL. Making this as NULL ensures that when C exits, it won't try to access freed up memory.
+
+P terminates without waiting, after C exits - When C exits, it will update exit status, make child_thread pointer to NULL and release sema_exit. When P exits, it will find child_info corresponding to C
+ 	                                      but child_thread pointer would have already been NULLified by C. So it will just free up memory and exit.
+
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+We use the method in which we check every pointer to memory is valid before
+we dereference and get the value. This approach is simple to implement.
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+The design for file descriptors in our code decouples the per process file
+descriptor from the file in file system it points to. Thus different processes
+can have their own set of file descriptors independent of any other processes.
+The disadvantage is that we could have used a hash table other than a list
+for the per process file list. That would increase look up speed.
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+We haven't changed this mapping.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?

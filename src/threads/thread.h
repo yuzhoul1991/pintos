@@ -4,6 +4,17 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+
+/* Struct which stores relevant file info */
+struct file_info
+  {
+    int fd;                      /* fd of the opened file */
+    struct file *file_ptr;       /* pointer to the file opened */
+    struct list_elem file_elem;  /* List element for fd_list list. */
+
+  };
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -18,6 +29,18 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+
+/* Struct which stores child process's info*/
+struct child_info
+  {
+   tid_t tid;                        /* tid of the child process */
+   bool loaded;                      /* Indicates if the child process loaded succesfully*/
+   int exit_status;                  /* Indicates if the child process exit status */
+   struct thread *child_thread;      /* Reference to child thread struct */
+   struct list_elem child_elem;      /* List element for child_list */
+   struct semaphore sema_load;        /* Semaphore to wait for to get updated loaded value */
+   struct semaphore sema_exit;        /* Semaphore to wait for to get updated exit_status value */
+  };
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -95,7 +118,15 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;                    /* Page directory. */
+    int total_fds;                        /* Total fds opened by current process */
+    struct list fd_list;                  /* List of opened files */
+    struct list child_list;               /* List of all child process */
+    struct child_info* recent_child;      /* Pointer to thread's recent child process forked */
+    struct child_info* parent_child_info; /* If this Process is a child, Pointer to child_info about itself stored in parent's child_list*/
+    struct file *executable;              /* pointer to struct file of executable */
+    char process_name[15];                /* Name of the process given passed in process_execute. */
+    int exit_status;                      /* Exit status of the thread */
 #endif
 
     /* Owned by thread.c. */
@@ -137,5 +168,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+struct list_elem *thread_find_fd(struct thread *t, int fd);
 
 #endif /* threads/thread.h */
