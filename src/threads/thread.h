@@ -3,9 +3,11 @@
 
 #include <debug.h>
 #include <list.h>
+#include <hash.h>
 #include <stdint.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "vm/page.h"
 
 /* Struct which stores relevant file info */
 struct file_info
@@ -127,6 +129,7 @@ struct thread
     struct file *executable;              /* pointer to struct file of executable */
     char process_name[15];                /* Name of the process given passed in process_execute. */
     int exit_status;                      /* Exit status of the thread */
+    struct hash spage_table;              /* Per process suplimental page table */
 #endif
 
     /* Owned by thread.c. */

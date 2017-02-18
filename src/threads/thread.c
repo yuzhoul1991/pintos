@@ -12,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -185,7 +186,7 @@ thread_create (const char *name, int priority,
   tid = t->tid = allocate_tid ();
   #ifdef USERPROG
     struct thread *t_current = thread_current ();
-    /* Update child_info corresponding to current thread. 
+    /* Update child_info corresponding to current thread.
        Also point parent_child_info pointer to that child_info
     */
     if (t_current->recent_child != NULL)
@@ -500,6 +501,7 @@ init_thread (struct thread *t, const char *name, int priority)
     strlcpy (t->process_name, "", sizeof t->process_name);
     t->exit_status = -1;
   #endif
+  page_init(t);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

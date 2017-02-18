@@ -11,5 +11,6 @@ void process_update_exit_status(int status);
 void process_exit (void);
 void process_activate (void);
 struct child_info* process_get_child_info(tid_t id);
+bool install_page (void *upage, void *kpage, bool writable);
 
 #endif /* userprog/process.h */

@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "threads/synch.h"
+#include "vm/page.h"
 #include "lib/user/syscall.h"
 
 static thread_func start_process NO_RETURN;
@@ -88,10 +89,10 @@ start_process (void *file_name_)
   uint32_t argc = 0;
   char *argv[128];
 
-  /* Get characters separated by " " and pass it through argv. 
+  /* Get characters separated by " " and pass it through argv.
      argv will eventually be pushed to stack
   */
-  
+
   char *token, *save_ptr;
   char *file_name = strtok_r(file_name_arg, " ", &save_ptr);
   if(file_name != NULL)
@@ -122,7 +123,7 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp, argc, argv);
 
-  /* child process updates loaded value and releases semaphore sema_load. 
+  /* child process updates loaded value and releases semaphore sema_load.
      Thus enabling parent to read loading status without race condition
   */
   if(cur->parent_child_info != NULL)
@@ -148,7 +149,7 @@ start_process (void *file_name_)
 
 /* When passed a tid child_id, iterate through parent's child_list and find child_info corresponding
    to the child. If no child_info is found, the function return's NULL.
-   If no child_info is found, it could mean, Parent has no child with child_id or the parent had already 
+   If no child_info is found, it could mean, Parent has no child with child_id or the parent had already
    waited for child_id*/
 struct child_info *
 process_get_child_info (tid_t child_id)
@@ -187,7 +188,7 @@ process_wait (tid_t child_tid)
   struct thread *cur = thread_current ();
   if(list_empty (&cur->child_list))
     return -1;
-  
+
   /* Parent tries to find child_info corresponding to child_tid.
      If not found, then the function returns -1 */
   struct child_info *child_s = process_get_child_info (child_tid);
@@ -267,8 +268,8 @@ process_exit (void)
     cur->total_fds--;
   }
 
-  /* Child process obtains child_info created by parent. Releases the semaphore sema_exit 
-     so that a parent in process_wait can read the exit status of child 
+  /* Child process obtains child_info created by parent. Releases the semaphore sema_exit
+     so that a parent in process_wait can read the exit status of child
   */
   enum intr_level old_level;
   old_level = intr_disable ();
@@ -439,7 +440,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
       printf ("load: %s: error loading executable\n", file_name);
       goto done;
     }
-  
+
   /* Deny write to executable and keep track of executable file to close it at exit */
   filesys_lock ();
   file_deny_write (file);
@@ -531,8 +532,6 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
-
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
 static bool
@@ -603,39 +602,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
-  filesys_lock ();
-  file_seek (file, ofs);
-  filesys_unlock ();
   while (read_bytes > 0 || zero_bytes > 0)
     {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+      /* Setup spte for this file page */
+      if(!page_add_file (upage, file, ofs, page_read_bytes, page_zero_bytes, writable))
         return false;
-
-      /* Load this page. */
-      filesys_lock ();
-      off_t bytes_read = file_read (file, kpage, page_read_bytes);
-      filesys_unlock ();
-      if (bytes_read != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false;
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable))
-        {
-          palloc_free_page (kpage);
-          return false;
-        }
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -643,38 +617,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       upage += PGSIZE;
     }
   return true;
-}
-
-/* Find number of pages needed to setup stack. 
-  For project 2 we set hard limit of 2 pages for the user stack */
-static int
-total_page_check(uint32_t argc, char **argv)
-{
-  uint32_t final_stack = (uint32_t)PHYS_BASE;
-  int i;
-  uint32_t argv_address[argc];
-  uint32_t old_address, zero = 0;
-  int32_t total_pages = 1;
-
-  for(i = argc - 1; i >= 0; i--)
-  {
-    size_t argv_len = strlen(argv[i]) + 1;//Adding +1 to include \0
-    final_stack = final_stack - argv_len;
-  }
-  if(final_stack % 4 != 0)
-    final_stack -= final_stack % 4;
-  for(i = argc; i >= 0; i--)
-    final_stack = final_stack - (sizeof argv_address[i]);
-  final_stack = final_stack - (sizeof old_address);
-  final_stack = final_stack - (sizeof argc);
-  final_stack = final_stack - (sizeof zero);
-
-  total_pages = ((uint32_t)PHYS_BASE-final_stack) / (uint32_t)PGSIZE + 1;
-
-  if(total_pages > 2)
-    thread_exit();
-
-  return total_pages;
 }
 
 /* word align the stack pointer */
@@ -687,39 +629,6 @@ word_align(void **esp)
     uint8_t zero = 0;
     *(uint8_t*)*esp = zero;
   }
-}
-
-/* Try to allocate "total_pages" of physical memory and store translations for those in page tables */
-static bool
-allocate_page_for_stack(int total_pages)
-{
-  int32_t i, j;
-  uint8_t *kpage[total_pages];
-  bool success = false;
-  struct thread *t_current = thread_current ();
-
-  for(i = 0; i < total_pages; i++)
-  {
-    kpage[i] = palloc_get_page (PAL_USER | PAL_ZERO);
-    if(kpage[i] != NULL)
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - (PGSIZE * (i + 1)), kpage[i], true);
-      if(!success)
-        palloc_free_page(kpage[i]);
-    }
-    else
-      success = false;
-
-    if(!success)
-    {
-      for(j = i - 1; j >= 0; j--)
-      {
-        palloc_free_page(kpage[j]);
-        pagedir_clear_page(t_current->pagedir, (((uint8_t *) PHYS_BASE) - (PGSIZE * (j + 1))));
-      }
-    }
-  }
-  return success;
 }
 
 /* push dummy return value zero to stack */
@@ -736,12 +645,8 @@ push_dummy_return_value(void **esp)
 static bool
 setup_stack (void **esp, uint32_t argc, char **argv)
 {
-  bool success = false;
-  /* Find total pages needed by the stack */
-  int32_t total_pages = total_page_check(argc, argv);
-
-  /* try allocating "total_pages" and map it to virtuall address */
-  success = allocate_page_for_stack(total_pages);
+  /* eagerly allocate the first page under PHYS_BASE of user stack */
+  bool success = grow_stack (((uint8_t*)PHYS_BASE) - PGSIZE);
   if (success)
   {
     int32_t i;
@@ -762,7 +667,7 @@ setup_stack (void **esp, uint32_t argc, char **argv)
       memcpy(*esp, argv[i], argv_len);
       argv_address[i] = (uint32_t)*esp;
     }
-    
+
     /* Word align the stack */
     word_align(esp);
 
@@ -795,7 +700,7 @@ setup_stack (void **esp, uint32_t argc, char **argv)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
