@@ -501,7 +501,6 @@ init_thread (struct thread *t, const char *name, int priority)
     strlcpy (t->process_name, "", sizeof t->process_name);
     t->exit_status = -1;
   #endif
-  page_init(t);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

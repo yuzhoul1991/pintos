@@ -86,6 +86,7 @@ start_process (void *file_name_)
   bool success;
   struct thread *cur = thread_current ();
 
+  page_init (cur);
   uint32_t argc = 0;
   char *argv[128];
 
