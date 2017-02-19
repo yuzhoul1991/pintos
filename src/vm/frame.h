@@ -24,5 +24,6 @@ void frame_lock_release(void);
 
 void* frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte);
 void frame_free_page(struct spage_table_entry *spte);
+void * frame_get_kpage(struct spage_table_entry *spte);
 
 #endif

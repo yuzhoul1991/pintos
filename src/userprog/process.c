@@ -249,7 +249,7 @@ process_update_exit_status(int status)
 }
 
 static void
-process_free_file_descriptors()
+process_free_file_descriptors(void)
 {
   struct thread *cur = thread_current ();
   /* Close all unclosed fd's by this thread*/
@@ -267,7 +267,70 @@ process_free_file_descriptors()
 }
 
 static void
-process_release_exit_semaphore()
+process_free_code_segment(void)
+{
+  struct thread *cur = thread_current ();
+  if(cur->code_seg_start == 0
+     || cur->code_seg_end == 0)
+    return;
+  void* start_vaddr = cur->code_seg_start;
+  void* end_vaddr   = cur->code_seg_end;
+  void* vaddr;
+  for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
+  {
+    page_free_vaddr(vaddr);
+  }
+}
+
+static void
+process_free_data_segment(void)
+{
+  struct thread *cur = thread_current ();
+  if(cur->data_seg_start == 0
+     || cur->data_seg_start == 0)
+    return;
+  void* start_vaddr = cur->data_seg_start;
+  void* end_vaddr   = cur->data_seg_end;
+  void* vaddr;
+  for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
+  {
+    page_free_vaddr(vaddr);
+  }
+}
+
+static void
+process_free_stack_segment(void)
+{
+  struct thread *cur = thread_current ();
+  if(cur->stack_start == cur->stack_end)
+    return;
+  void* start_vaddr = cur->stack_start;
+  void* end_vaddr   = cur->stack_end;
+  void* vaddr;
+  for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
+  {
+    page_free_vaddr(vaddr);
+  }
+}
+
+static void
+process_free_mmaps(void)
+{
+  struct thread *cur = thread_current ();
+  /* Munmap all unclosed mmap's by this thread*/
+  while(!list_empty(&cur->mmap_list))
+  {
+    struct list_elem *e = list_begin(&cur->mmap_list);
+    struct mmap_info *m_info = list_entry (e, struct mmap_info, mmap_elem);
+    thread_munmap(m_info);
+    list_remove(e);
+    free(m_info);
+    cur->total_mmaps--;
+  }
+}
+
+static void
+process_release_exit_semaphore(void)
 {
   struct thread *cur = thread_current ();
   /* Child process obtains child_info created by parent. Releases the semaphore sema_exit
@@ -285,14 +348,14 @@ process_release_exit_semaphore()
 }
 
 static void
-process_free_spage_table()
+process_free_spage_table(void)
 {
   struct thread *t_current = thread_current ();
   page_free (t_current);
 }
 
 static void
-process_free_child_list()
+process_free_child_list(void)
 {
   struct thread *cur = thread_current ();
   /* free up all child_info for children the current process did not wait */
@@ -311,7 +374,7 @@ process_free_child_list()
 }
 
 static void
-process_destroy_pagedir()
+process_destroy_pagedir(void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
@@ -334,7 +397,7 @@ process_destroy_pagedir()
 }
 
 static void
-process_close_executable_file()
+process_close_executable_file(void)
 {
   struct thread *cur = thread_current ();
   /* Close the executable file */
@@ -347,7 +410,7 @@ process_close_executable_file()
 }
 
 static void
-process_print_exit_msg()
+process_print_exit_msg(void)
 {
   struct thread *cur = thread_current ();
   printf("%s: exit(%d)\n",cur->process_name,cur->exit_status);
@@ -358,6 +421,10 @@ process_exit (void)
 {
   process_free_file_descriptors ();
   process_release_exit_semaphore ();
+  process_free_code_segment ();
+  process_free_data_segment ();
+  process_free_stack_segment ();
+  process_free_mmaps ();
   process_free_spage_table ();
   process_destroy_pagedir ();
   process_close_executable_file ();
@@ -658,6 +725,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *t = thread_current ();
+
+  if(writable)
+  {
+    t->data_seg_start = (void *) upage;
+    t->data_seg_start = t->data_seg_start + read_bytes + zero_bytes;
+  }
+  else
+  {
+    t->code_seg_start = (void *) upage;
+    t->code_seg_start = t->code_seg_start + read_bytes + zero_bytes;
+  }
+
   off_t per_page_off = ofs;
   while (read_bytes > 0 || zero_bytes > 0)
     {
@@ -665,7 +745,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Setup spte for this file page */
-      if(!page_add_file (upage, file, per_page_off, page_read_bytes, page_zero_bytes, writable))
+      if(!page_add_file (upage, file, per_page_off, page_read_bytes, page_zero_bytes, writable, false))
         return false;
 
       /* Advance. */

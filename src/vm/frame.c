@@ -6,23 +6,27 @@
 // lock for frame allocator
 static struct lock lock;
 
-void frame_lock_acquire()
+void 
+frame_lock_acquire()
 {
   lock_acquire(&lock);
 }
 
-void frame_lock_release()
+void 
+frame_lock_release()
 {
   lock_release(&lock);
 }
 
-void frame_table_init()
+void 
+frame_table_init()
 {
   lock_init(&lock);
   list_init(&frame_table);
 }
 
-void * frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
+void * 
+frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
 {
   struct thread* t_current = thread_current ();
   struct frame_table_entry *new_fte = malloc(sizeof(struct frame_table_entry));
@@ -46,7 +50,8 @@ void * frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
   return new_fte->kvaddr;
 }
 
-void frame_free_page(struct spage_table_entry *spte)
+void 
+frame_free_page(struct spage_table_entry *spte)
 {
   struct list_elem *e;
   struct frame_table_entry *to_free = NULL;
@@ -65,4 +70,29 @@ void frame_free_page(struct spage_table_entry *spte)
   frame_lock_release ();
   palloc_free_page (to_free->kvaddr);
   free (to_free);
+}
+
+void * 
+frame_get_kpage(struct spage_table_entry *spte)
+{
+  struct list_elem *e;
+  struct frame_table_entry *fte = NULL;
+  bool found = true;
+
+  frame_lock_acquire ();
+  for (e = list_begin(&frame_table); e != list_end(&frame_table); e = list_next(e))
+  {
+    fte = list_entry (e, struct frame_table_entry, elem);
+    if (fte->spte == spte)
+    {
+      found = true;
+      break;
+    }
+  }
+  frame_lock_release ();
+
+  if(!found)
+    PANIC ("frame table entry not found for a valid SPTE");
+
+  return fte->kvaddr;
 }

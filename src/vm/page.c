@@ -9,16 +9,20 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "filesys/filesys.h"
+#include "threads/interrupt.h"
+#include "userprog/pagedir.h"
 
-static unsigned spage_hash_hash_func (const struct hash_elem *e, void *aux UNUSED)
+static unsigned 
+spage_hash_hash_func (const struct hash_elem *e, void *aux UNUSED)
 {
   struct spage_table_entry *spte = hash_entry (e, struct spage_table_entry, elem);
   return hash_int((int)spte->uvaddr);
 }
 
-static bool spage_hash_less_func (const struct hash_elem *a,
-                                  const struct hash_elem *b,
-                                  void *aux UNUSED)
+static bool 
+spage_hash_less_func (const struct hash_elem *a,
+                      const struct hash_elem *b,
+                      void *aux UNUSED)
 {
   struct spage_table_entry *spte_a = hash_entry (a, struct spage_table_entry, elem);
   struct spage_table_entry *spte_b = hash_entry (b, struct spage_table_entry, elem);
@@ -27,23 +31,27 @@ static bool spage_hash_less_func (const struct hash_elem *a,
   return false;
 }
 
-static void spage_free_hash_action_func (struct hash_elem *e, void *aux UNUSED)
+static void 
+spage_free_hash_action_func (struct hash_elem *e, void *aux UNUSED)
 {
   struct spage_table_entry *spte = hash_entry (e, struct spage_table_entry, elem);
   free (spte);
 }
 
-void page_init(struct thread *t)
+void 
+page_init(struct thread *t)
 {
   hash_init (&t->spage_table, spage_hash_hash_func, spage_hash_less_func, NULL);
 }
 
-void page_free(struct thread *t)
+void 
+page_free(struct thread *t)
 {
   hash_destroy(&t->spage_table, spage_free_hash_action_func);
 }
 
-bool grow_stack(void* uvaddr)
+bool 
+grow_stack(void* uvaddr)
 {
   if ((uint32_t)(pg_round_down(uvaddr)) < STACK_LIMIT)
     {
@@ -51,6 +59,7 @@ bool grow_stack(void* uvaddr)
     }
 
   struct thread * t_current = thread_current ();
+  t_current->stack_start-=PGSIZE;
   struct spage_table_entry *new_spte = malloc (sizeof(struct spage_table_entry));
   if (new_spte == NULL)
     return false;
@@ -59,9 +68,11 @@ bool grow_stack(void* uvaddr)
   new_spte->read_bytes = 0;
   new_spte->zero_bytes = 0;
   new_spte->offset = 0;
-  new_spte->type = SPTE_SWAP;
+  new_spte->type = SPTE_ZERO;
   new_spte->uvaddr = pg_round_down(uvaddr);
   new_spte->writable = true;
+  new_spte->pinned = true;
+  lock_init(&new_spte->entry_lock);
 
   // Ask the frame allocator for a new physical page
   uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER | PAL_ZERO, new_spte);
@@ -79,10 +90,14 @@ bool grow_stack(void* uvaddr)
     }
 
   hash_insert (&t_current->spage_table, &new_spte->elem);
+  memset (kpage, 0, PGSIZE);
+
+  page_unpin(new_spte);
   return true;
 }
 
-struct spage_table_entry* page_get_spte(void* fault_addr)
+struct spage_table_entry* 
+page_get_spte(void* fault_addr)
 {
   struct spage_table_entry probe;
   struct thread *t_current = thread_current ();
@@ -93,8 +108,9 @@ struct spage_table_entry* page_get_spte(void* fault_addr)
   return hash_entry (e, struct spage_table_entry, elem);
 }
 
-bool page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
-                   uint32_t zero_bytes, bool writable)
+bool 
+page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
+                   uint32_t zero_bytes, bool writable, bool mmaped)
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs(upage) == 0);
@@ -109,15 +125,18 @@ bool page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_b
   new_spte->read_bytes = read_bytes;
   new_spte->zero_bytes = zero_bytes;
   new_spte->offset = ofs;
-  new_spte->type = SPTE_FILE;
+  new_spte->type = mmaped? SPTE_MMAP: SPTE_FILE;
   new_spte->uvaddr = upage;
   new_spte->writable = writable;
+  new_spte->pinned = false;
+  lock_init(&new_spte->entry_lock);
 
   hash_insert (&t_current->spage_table, &new_spte->elem);
   return true;
 }
 
-bool page_load_from_file(struct spage_table_entry *spte)
+bool 
+page_load_from_file(struct spage_table_entry *spte)
 {
   ASSERT (spte != NULL);
 
@@ -129,8 +148,7 @@ bool page_load_from_file(struct spage_table_entry *spte)
 
   uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER, spte);
   if (kpage == NULL)
-    // FIXME: what to do with the spte? leave it alone and try again next time it faults?
-    return false;
+    PANIC ("No frames available even after implementing eviction");
 
   /* entire page is zero, no need to read from disk */
   if (page_zero_bytes == PGSIZE)
@@ -162,4 +180,82 @@ bool page_load_from_file(struct spage_table_entry *spte)
     }
 
   return true;
+}
+
+void
+page_pin(struct spage_table_entry *spte)
+{
+  lock_acquire(&spte->entry_lock);
+  spte->pinned = true;
+  lock_release(&spte->entry_lock);
+}
+
+void
+page_unpin(struct spage_table_entry *spte)
+{
+  lock_acquire(&spte->entry_lock);
+  spte->pinned = false;
+  lock_release(&spte->entry_lock);
+}
+
+bool
+page_get_pinned(struct spage_table_entry *spte)
+{
+  bool pin = false;
+  lock_acquire(&spte->entry_lock);
+  pin = spte->pinned;
+  lock_release(&spte->entry_lock);
+  return pin;
+}
+
+void
+page_free_vaddr(void *vaddr)
+{
+  struct spage_table_entry *spte = page_get_spte(vaddr);
+  if(spte)
+  {
+    struct thread *t = thread_current ();
+
+    page_pin(spte);
+
+    if(pagedir_get_page (t->pagedir, vaddr) != NULL)
+    {
+      //When freeing vaddr, Only MMAP has to writeback to file
+      if(spte->type == SPTE_MMAP)
+      {
+        /* Disable interrupts when accessing PTE Dirty. It could be SET by CPU anytime */
+        enum intr_level old_level;
+        old_level = intr_disable ();
+    
+        if(pagedir_is_dirty(t->pagedir, vaddr))
+        {
+          filesys_lock ();
+          file_seek (spte->file, spte->offset);
+          filesys_unlock ();
+          /* Write mmaped file. */
+          void* kpage = frame_get_kpage(spte);
+          filesys_lock ();
+          off_t bytes_write = file_write (spte->file, kpage, PGSIZE);
+          filesys_unlock ();
+          if (bytes_write != PGSIZE)
+            PANIC ("page_free_vaddr: Not writing PGSIZE dirty bytes to file");
+        }
+
+        intr_set_level (old_level);
+      }
+      frame_free_page(spte);
+    }
+    else
+    {
+      //When freeing vaddr, If vaddr has no frame, only SWAP needs to be reased.
+      if(spte->type == SPTE_SWAP)
+      {
+        //FIXME: Release swap slot
+      }
+    }
+
+    page_unpin(spte);
+   
+    free(spte);
+  }
 }

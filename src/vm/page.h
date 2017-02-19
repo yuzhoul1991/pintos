@@ -3,6 +3,7 @@
 
 #include "threads/vaddr.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "kernel/hash.h"
 #include "filesys/off_t.h"
 
@@ -13,6 +14,7 @@
 #define SPTE_FILE 0x1
 #define SPTE_SWAP 0x2
 #define SPTE_MMAP 0x4
+#define SPTE_ZERO 0x8
 
 struct spage_table_entry
   {
@@ -20,9 +22,11 @@ struct spage_table_entry
     uint32_t read_bytes;
     uint32_t zero_bytes;
     off_t offset;
-    uint8_t type;
+    uint8_t type;           /* type can be modified by other threads during eviction. Read or write of this should have pinned=true */
     void* uvaddr;
     bool writable;
+    bool pinned;
+    struct lock entry_lock;
     struct hash_elem elem;
   };
 
@@ -36,8 +40,12 @@ bool grow_stack(void* uvaddr);
 struct spage_table_entry* page_get_spte(void *fault_addr);
 
 bool page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
-                   uint32_t zero_bytes, bool writable);
+                   uint32_t zero_bytes, bool writable, bool mmaped);
 
 bool page_load_from_file(struct spage_table_entry *spte);
+void page_pin(struct spage_table_entry *spte);
+void page_unpin(struct spage_table_entry *spte);
+bool page_get_pinned(struct spage_table_entry *spte);
+void page_free_vaddr(void *vaddr);
 
 #endif

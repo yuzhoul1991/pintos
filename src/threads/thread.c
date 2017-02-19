@@ -477,6 +477,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   #ifdef USERPROG
+    t->code_seg_start = 0;
+    t->code_seg_end = 0;
+    t->data_seg_start = 0;
+    t->data_seg_end = 0;
+    t->stack_start = PHYS_BASE;
+    t->stack_end = PHYS_BASE;
+    t->total_mmaps = 0;
+    list_init(&t->mmap_list);
     t->total_fds = 0;
     list_init(&t->fd_list);
     list_init(&t->child_list);
@@ -530,6 +538,32 @@ thread_find_fd(struct thread *t, int fd)
     {
       struct file_info *f_info = list_entry (e, struct file_info, file_elem);
       if (f_info->fd == fd)
+      {
+        found = true;
+        break;
+      }
+    }
+
+    if(found)
+      return e;
+    else
+      return NULL;
+  }
+  else
+    return NULL;
+}
+
+struct list_elem *
+thread_find_mmap(struct thread *t, mapid_t mapid)
+{
+  if(!list_empty(&t->mmap_list))
+  {
+    bool found = false;
+    struct list_elem *e;
+    for (e = list_begin (&t->mmap_list); e != list_end (&t->mmap_list); e = list_next (e))
+    {
+      struct mmap_info *m_info = list_entry (e, struct mmap_info, mmap_elem);
+      if (m_info->mapid == mapid)
       {
         found = true;
         break;
@@ -631,3 +665,15 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+void
+thread_munmap(struct mmap_info *m_info)
+{
+  void* start_vaddr = m_info->vaddr_start;
+  void* end_vaddr   = m_info->vaddr_end;
+  void* vaddr;
+  for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
+  {
+    page_free_vaddr(vaddr);
+  }
+}

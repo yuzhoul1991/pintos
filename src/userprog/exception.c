@@ -154,6 +154,8 @@ page_fault (struct intr_frame *f)
   /* spte already setup, need to load page */
   bool success = false;
   if (spte)
+  {
+    page_pin(spte);
     switch(spte->type)
     {
       case(SPTE_FILE):
@@ -167,11 +169,12 @@ page_fault (struct intr_frame *f)
         PANIC ("You shouldn't page fault in the first place!");
         break;
     }
+    page_unpin(spte);
+  }
   else
     {
       if (fault_addr < f->esp && fault_addr >= f->esp - STACK_REACH_LIMIT)
         grow_stack (fault_addr);
-      // FIXME: more cases here?
       else
         thread_exit ();
     }

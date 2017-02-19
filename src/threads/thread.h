@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "userprog/syscall.h"
 #include "vm/page.h"
 
 /* Struct which stores relevant file info */
@@ -15,6 +16,18 @@ struct file_info
     int fd;                      /* fd of the opened file */
     struct file *file_ptr;       /* pointer to the file opened */
     struct list_elem file_elem;  /* List element for fd_list list. */
+
+  };
+
+typedef int mapid_t;
+/* Struct which stores relevant mmap info */
+struct mmap_info
+  {
+    mapid_t mapid;               /* fd of the opened file */
+    void* vaddr_start;           /* Start virtual address of mmap */
+    void* vaddr_end;             /* End virtual address of mmap */
+    size_t mmap_size;            /* size of file mmaped */
+    struct list_elem mmap_elem;  /* List element for mmap_list list. */
 
   };
 
@@ -121,6 +134,14 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                    /* Page directory. */
+    void* code_seg_start;                 /* Start vaddr of code_segment*/
+    void* code_seg_end;                   /* End vaddr of code_segment*/
+    void* data_seg_start;                 /* Start vaddr of data_segment*/
+    void* data_seg_end;                   /* End vaddr of data_segment*/
+    void* stack_start;                    /* Start vaddr of stack_segment*/
+    void* stack_end;                      /* End vaddr of stack_segment*/
+    int total_mmaps;                      /* Total mmaps opened by current process */
+    struct list mmap_list;                /* List of opened mmaps */
     int total_fds;                        /* Total fds opened by current process */
     struct list fd_list;                  /* List of opened files */
     struct list child_list;               /* List of all child process */
@@ -173,5 +194,8 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 struct list_elem *thread_find_fd(struct thread *t, int fd);
+struct list_elem *thread_find_mmap(struct thread *t, int fd);
+
+void thread_munmap(struct mmap_info *m_info);
 
 #endif /* threads/thread.h */
