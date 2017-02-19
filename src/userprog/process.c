@@ -603,19 +603,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  off_t per_page_off = ofs;
   while (read_bytes > 0 || zero_bytes > 0)
     {
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Setup spte for this file page */
-      if(!page_add_file (upage, file, ofs, page_read_bytes, page_zero_bytes, writable))
+      if(!page_add_file (upage, file, per_page_off, page_read_bytes, page_zero_bytes, writable))
         return false;
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      per_page_off += PGSIZE;
     }
   return true;
 }
