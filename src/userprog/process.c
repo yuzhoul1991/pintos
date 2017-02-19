@@ -246,16 +246,12 @@ process_update_exit_status(int status)
     cur->parent_child_info->exit_status = status;
   intr_set_level (old_level);
   cur->exit_status = status;
-
 }
 
-/* Free the current process's resources. */
-void
-process_exit (void)
+static void
+process_free_file_descriptors()
 {
   struct thread *cur = thread_current ();
-  uint32_t *pd;
-
   /* Close all unclosed fd's by this thread*/
   while(!list_empty(&cur->fd_list))
   {
@@ -268,7 +264,12 @@ process_exit (void)
     free(f_info);
     cur->total_fds--;
   }
+}
 
+static void
+process_release_exit_semaphore()
+{
+  struct thread *cur = thread_current ();
   /* Child process obtains child_info created by parent. Releases the semaphore sema_exit
      so that a parent in process_wait can read the exit status of child
   */
@@ -281,7 +282,39 @@ process_exit (void)
     sema_up(c_sema_exit);
   }
   intr_set_level (old_level);
+}
 
+static void
+process_free_spage_table()
+{
+  struct thread *t_current = thread_current ();
+  page_free (t_current);
+}
+
+static void
+process_free_child_list()
+{
+  struct thread *cur = thread_current ();
+  /* free up all child_info for children the current process did not wait */
+  while(!list_empty(&cur->child_list))
+  {
+    struct list_elem *e = list_begin(&cur->child_list);
+    struct child_info *c_info = list_entry (e, struct child_info, child_elem);
+    list_remove(e);
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    if (c_info->child_thread != NULL)
+      c_info->child_thread->parent_child_info = NULL;
+    intr_set_level (old_level);
+    free(c_info);
+  }
+}
+
+static void
+process_destroy_pagedir()
+{
+  struct thread *cur = thread_current ();
+  uint32_t *pd;
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -298,7 +331,12 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+}
 
+static void
+process_close_executable_file()
+{
+  struct thread *cur = thread_current ();
   /* Close the executable file */
   if(cur->executable != NULL)
   {
@@ -306,8 +344,25 @@ process_exit (void)
     file_close (cur->executable);
     filesys_unlock ();
   }
+}
 
+static void
+process_print_exit_msg()
+{
+  struct thread *cur = thread_current ();
   printf("%s: exit(%d)\n",cur->process_name,cur->exit_status);
+}
+
+void
+process_exit (void)
+{
+  process_free_file_descriptors ();
+  process_release_exit_semaphore ();
+  process_free_spage_table ();
+  process_destroy_pagedir ();
+  process_close_executable_file ();
+  process_free_child_list ();
+  process_print_exit_msg ();
 }
 
 /* Sets up the CPU for running user code in the current

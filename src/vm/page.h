@@ -27,6 +27,7 @@ struct spage_table_entry
   };
 
 void page_init(struct thread* t);
+void page_free(struct thread* t);
 
 // grow the stack by one page in which the faulted uvaddr is located
 bool grow_stack(void* uvaddr);

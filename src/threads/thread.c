@@ -297,21 +297,6 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
-  /* Free all child_info */
-  struct thread *cur = thread_current ();
-  /* free up all child_info for children the current process did not wait */
-  while(!list_empty(&cur->child_list))
-  {
-    struct list_elem *e = list_begin(&cur->child_list);
-    struct child_info *c_info = list_entry (e, struct child_info, child_elem);
-    list_remove(e);
-    enum intr_level old_level;
-    old_level = intr_disable ();
-    if (c_info->child_thread != NULL)
-      c_info->child_thread->parent_child_info = NULL;
-    intr_set_level (old_level);
-    free(c_info);
-  }
 #endif
 
   /* Remove thread from all threads list, set our status to dying,

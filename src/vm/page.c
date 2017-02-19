@@ -27,9 +27,20 @@ static bool spage_hash_less_func (const struct hash_elem *a,
   return false;
 }
 
+static void spage_free_hash_action_func (struct hash_elem *e, void *aux UNUSED)
+{
+  struct spage_table_entry *spte = hash_entry (e, struct spage_table_entry, elem);
+  free (spte);
+}
+
 void page_init(struct thread *t)
 {
   hash_init (&t->spage_table, spage_hash_hash_func, spage_hash_less_func, NULL);
+}
+
+void page_free(struct thread *t)
+{
+  hash_destroy(&t->spage_table, spage_free_hash_action_func);
 }
 
 bool grow_stack(void* uvaddr)
