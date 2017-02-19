@@ -24,26 +24,36 @@ syscall_init (void)
 
 /* Check if ptr is a valid user address which is also mapped */
 static void
-syscall_check_valid_user_pointer(void* ptr)
+syscall_check_valid_user_pointer(void* ptr, bool is_write)
 {
-  struct thread *t_current = thread_current ();
-  if (ptr == NULL
-      || !is_user_vaddr (ptr)
-      || pagedir_get_page (t_current->pagedir, ptr) == NULL)
+  bool valid = ptr != NULL;
+
+  valid &= is_user_vaddr (ptr);
+
+  struct spage_table_entry *spte = page_get_spte(ptr);
+
+  valid &= spte != NULL;
+
+  if (spte && is_write)
+    {
+      valid &= spte->writable;
+    }
+
+  if (!valid)
     thread_exit ();
 }
 
 /* Check if ptr to a buffer is a valid user address which is also mapped for all size bytes. */
 static void
-syscall_check_valid_user_buffer(void* ptr, size_t size)
+syscall_check_valid_user_buffer(void* ptr, size_t size, bool is_write)
 {
-  syscall_check_valid_user_pointer(ptr);
+  syscall_check_valid_user_pointer(ptr, is_write);
   uint32_t *up_limit = (uint32_t*)ptr + size / 4;
   uint32_t *check_ptr = (uint32_t*)ROUND_DOWN ((int)ptr, PGSIZE);
 
   while (check_ptr <= (uint32_t*)up_limit)
     {
-      syscall_check_valid_user_pointer(check_ptr);
+      syscall_check_valid_user_pointer(check_ptr, is_write);
       check_ptr += PGSIZE / 4;
     }
 }
@@ -52,7 +62,7 @@ syscall_check_valid_user_buffer(void* ptr, size_t size)
 static int
 syscall_get_number(struct intr_frame *f)
 {
-  syscall_check_valid_user_pointer (f->esp);
+  syscall_check_valid_user_pointer (f->esp, false);
   return *((uint32_t*)f->esp);
 }
 
@@ -60,7 +70,7 @@ syscall_get_number(struct intr_frame *f)
 static uint32_t
 syscall_get_arg(struct intr_frame *f, uint32_t offset)
 {
-  syscall_check_valid_user_pointer(f->esp + offset);
+  syscall_check_valid_user_pointer(f->esp + offset, false);
   return *(uint32_t*)(f->esp + offset);
 }
 
@@ -159,7 +169,6 @@ syscall_filesize (int fd)
 static int
 syscall_read (int fd, void *buffer, unsigned size)
 {
-
   if(fd == 0)
   {
     *(uint8_t *)buffer = input_getc();
@@ -283,7 +292,7 @@ syscall_handler (struct intr_frame *f)
       break;
     case(SYS_EXEC):
       command_line = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(command_line);
+      syscall_check_valid_user_pointer(command_line, false);
       f->eax = syscall_exec (command_line);
       break;
     case(SYS_WAIT):
@@ -292,18 +301,18 @@ syscall_handler (struct intr_frame *f)
       break;
     case(SYS_CREATE):
       file_name = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(file_name);
+      syscall_check_valid_user_pointer(file_name, false);
       file_size = (unsigned)syscall_get_arg(f, 8);
       f->eax = syscall_create (file_name, file_size);
       break;
     case(SYS_REMOVE):
       file_name = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(file_name);
+      syscall_check_valid_user_pointer(file_name, false);
       f->eax = syscall_remove (file_name);
       break;
     case(SYS_OPEN):
       file_name = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(file_name);
+      syscall_check_valid_user_pointer(file_name, false);
       f->eax = syscall_open (file_name);
       break;
     case(SYS_FILESIZE):
@@ -314,14 +323,14 @@ syscall_handler (struct intr_frame *f)
       fd = (int)syscall_get_arg(f, 4);
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
-      syscall_check_valid_user_buffer(buffer, file_size);
+      syscall_check_valid_user_buffer(buffer, file_size, false);
       f->eax = syscall_read(fd, buffer, file_size);
       break;
     case(SYS_WRITE):
       fd = (int)syscall_get_arg(f, 4);
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
-      syscall_check_valid_user_buffer(buffer, file_size);
+      syscall_check_valid_user_buffer(buffer, file_size, true);
       f->eax = syscall_write(fd, buffer, file_size);
       break;
     case(SYS_SEEK):

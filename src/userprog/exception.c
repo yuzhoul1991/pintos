@@ -153,30 +153,27 @@ page_fault (struct intr_frame *f)
 
   /* spte already setup, need to load page */
   bool success = false;
-  if (not_present)
+  if (spte)
+    switch(spte->type)
     {
-      if (spte)
-        switch(spte->type)
-        {
-          case(SPTE_FILE):
-          case(SPTE_MMAP):
-            success = page_load_from_file(spte);
-            break;
-          case(SPTE_SWAP):
-            PANIC ("swap loading not implemented yet!");
-            break;
-          default:
-            PANIC ("You shouldn't page fault in the first place!");
-            break;
-        }
+      case(SPTE_FILE):
+      case(SPTE_MMAP):
+        success = page_load_from_file(spte);
+        break;
+      case(SPTE_SWAP):
+        PANIC ("swap loading not implemented yet!");
+        break;
+      default:
+        PANIC ("You shouldn't page fault in the first place!");
+        break;
+    }
+  else
+    {
+      if (fault_addr < f->esp && fault_addr >= f->esp - STACK_REACH_LIMIT)
+        grow_stack (fault_addr);
+      // FIXME: more cases here?
       else
-        {
-          if (fault_addr >= f->esp - STACK_REACH_LIMIT)
-            grow_stack (fault_addr);
-          // FIXME: more cases here?
-          else
-            thread_exit ();
-        }
+        thread_exit ();
     }
 
   if (!success)
