@@ -4,6 +4,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/page.h"
 
 /* Number of page faults processed. */
@@ -154,27 +155,27 @@ page_fault (struct intr_frame *f)
   /* spte already setup, need to load page */
   bool success = false;
   if (spte)
-  {
-    page_pin(spte);
-    switch(spte->type)
     {
-      case(SPTE_FILE):
-      case(SPTE_MMAP):
-        success = page_load_from_file(spte);
-        break;
-      case(SPTE_SWAP):
-        PANIC ("swap loading not implemented yet!");
-        break;
-      default:
-        PANIC ("You shouldn't page fault in the first place!");
-        break;
+      page_pin(spte);
+      switch(spte->type)
+      {
+        case(SPTE_FILE):
+        case(SPTE_MMAP):
+          success = page_load_from_file(spte);
+          break;
+        case(SPTE_SWAP):
+          PANIC ("swap loading not implemented yet!");
+          break;
+        default:
+          PANIC ("You shouldn't page fault in the first place!");
+          break;
+      }
+      page_unpin(spte);
     }
-    page_unpin(spte);
-  }
   else
     {
-      if (fault_addr < f->esp && fault_addr >= f->esp - STACK_REACH_LIMIT)
-        grow_stack (fault_addr);
+      if (is_user_vaddr(fault_addr) && fault_addr >= f->esp - STACK_REACH_LIMIT)
+        success = grow_stack (fault_addr);
       else
         thread_exit ();
     }
