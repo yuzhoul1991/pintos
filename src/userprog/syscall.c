@@ -450,6 +450,7 @@ syscall_handler (struct intr_frame *f)
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
       syscall_check_valid_user_buffer(buffer, file_size, false, true);
+      //FIXME: Pin buffer vaddr
       f->eax = syscall_read(fd, buffer, file_size);
       break;
     case(SYS_WRITE):
@@ -457,6 +458,7 @@ syscall_handler (struct intr_frame *f)
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
       syscall_check_valid_user_buffer(buffer, file_size, true, true);
+      //FIXME: Pin buffer vaddr
       f->eax = syscall_write(fd, buffer, file_size);
       break;
     case(SYS_SEEK):

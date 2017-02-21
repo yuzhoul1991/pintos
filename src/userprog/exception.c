@@ -159,16 +159,16 @@ page_fault (struct intr_frame *f)
       page_pin(spte);
       switch(spte->type)
       {
-        case(SPTE_FILE):
-        case(SPTE_MMAP):
-          success = page_load_from_file(spte);
-          break;
-        case(SPTE_SWAP):
-          PANIC ("swap loading not implemented yet!");
-          break;
-        default:
-          PANIC ("You shouldn't page fault in the first place!");
-          break;
+      case(SPTE_FILE):
+      case(SPTE_MMAP):
+        success = page_load_from_file(spte);
+        break;
+      case(SPTE_SWAP):
+        success = page_load_from_swap(spte);
+        break;
+      default:
+        PANIC ("You shouldn't page fault in the first place!");
+        break;
       }
       page_unpin(spte);
     }

@@ -4,6 +4,7 @@
 #include <string.h>
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include "userprog/process.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
@@ -69,6 +70,7 @@ grow_stack(void* uvaddr)
   new_spte->zero_bytes = 0;
   new_spte->offset = 0;
   new_spte->type = SPTE_ZERO;
+  new_spte->swap_idx = 0;
   new_spte->uvaddr = pg_round_down(uvaddr);
   new_spte->writable = true;
   new_spte->pinned = true;
@@ -126,6 +128,7 @@ page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
   new_spte->zero_bytes = zero_bytes;
   new_spte->offset = ofs;
   new_spte->type = mmaped? SPTE_MMAP: SPTE_FILE;
+  new_spte->swap_idx = 0;
   new_spte->uvaddr = upage;
   new_spte->writable = writable;
   new_spte->pinned = false;
@@ -178,6 +181,28 @@ page_load_from_file(struct spage_table_entry *spte)
       frame_free_page (spte);
       return false;
     }
+
+  return true;
+}
+
+bool 
+page_load_from_swap(struct spage_table_entry *spte)
+{
+  ASSERT (spte != NULL);
+
+  void *kpage = frame_get_page(PAL_USER, spte);
+  if (kpage == NULL)
+    PANIC ("No frames available even after implementing eviction");
+  
+
+  /* Add the page to the process's address space. */
+  if (!install_page (spte->uvaddr, kpage, spte->writable))
+    {
+      frame_free_page (spte);
+      return false;
+    }
+  //FIXME
+  swap_read_idx(spte->swap_idx, kpage);
 
   return true;
 }
@@ -245,15 +270,13 @@ page_free_vaddr(void *vaddr)
         intr_set_level (old_level);
       }
       frame_free_page(spte);
-      pagedir_clear_page (t->pagedir, vaddr);
+      pagedir_clear_page(t->pagedir, vaddr);
     }
     else
     {
       //When freeing vaddr, If vaddr has no frame, only SWAP needs to be reased.
       if(spte->type == SPTE_SWAP)
-      {
-        //FIXME: Release swap slot
-      }
+        swap_release_idx(spte->swap_idx);
     }
 
     page_unpin(spte);

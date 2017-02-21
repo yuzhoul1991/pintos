@@ -288,7 +288,7 @@ process_free_data_segment(void)
 {
   struct thread *cur = thread_current ();
   if(cur->data_seg_start == 0
-     || cur->data_seg_start == 0)
+     || cur->data_seg_end == 0)
     return;
   void* start_vaddr = cur->data_seg_start;
   void* end_vaddr   = cur->data_seg_end;

@@ -2,6 +2,8 @@
 #include "vm/frame.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include "threads/interrupt.h"
+#include "userprog/pagedir.h"
 
 // lock for frame allocator
 static struct lock lock;
@@ -23,31 +25,114 @@ frame_table_init()
 {
   lock_init(&lock);
   list_init(&frame_table);
+  clock_hand = NULL;
+}
+
+static struct frame_table_entry *
+frame_eviction(void)
+{
+  struct frame_table_entry *evicted_frame = NULL;
+  while(clock_hand)
+  {
+    if(list_next(clock_hand) == list_tail(&frame_table))
+      clock_hand = list_begin(&frame_table);
+    else
+      clock_hand = list_next(clock_hand);
+
+    struct frame_table_entry *potential_frame = list_entry (clock_hand, struct frame_table_entry, elem);
+    lock_acquire(&potential_frame->spte->entry_lock);
+    enum intr_level old_level;
+    old_level = intr_disable ();
+    if(pagedir_is_accessed(potential_frame->thread->pagedir, potential_frame->spte->uvaddr))
+      pagedir_set_accessed(potential_frame->thread->pagedir, potential_frame->spte->uvaddr, false);
+    else
+    {
+      if(!potential_frame->spte->pinned)
+      {
+        evicted_frame = potential_frame;
+        break;
+      }
+    }
+
+    intr_set_level (old_level);
+    lock_release(&potential_frame->spte->entry_lock);
+  }
+
+  if(evicted_frame)
+  {
+    lock_acquire(&evicted_frame->spte->entry_lock);
+    enum intr_level old_level;
+    old_level = intr_disable ();
+
+    if(pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->spte->uvaddr))
+    {
+      if(evicted_frame->spte->type == SPTE_MMAP)
+      {
+          filesys_lock ();
+          file_seek (evicted_frame->spte->file, evicted_frame->spte->offset);
+          filesys_unlock ();
+          /* Write mmaped file. */
+          filesys_lock ();
+          off_t bytes_write = file_write (evicted_frame->spte->file, evicted_frame->kvaddr, PGSIZE);
+          filesys_unlock ();
+          if (bytes_write != PGSIZE)
+            PANIC ("page_free_vaddr: Not writing PGSIZE dirty bytes to file");
+        }
+      else
+      {
+        evicted_frame->spte->type = SPTE_SWAP;
+        evicted_frame->spte->swap_idx = swap_get_idx();
+        //FIXME
+        swap_write_idx(evicted_frame->spte->swap_idx, evicted_frame->kvaddr);
+      }
+    }
+    pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->spte->uvaddr);
+
+    intr_set_level (old_level);
+    lock_release(&evicted_frame->spte->entry_lock);
+  }
+  
+  return evicted_frame;
 }
 
 void *
 frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
 {
   struct thread* t_current = thread_current ();
-  struct frame_table_entry *new_fte = malloc(sizeof(struct frame_table_entry));
-  if (new_fte == NULL)
-    PANIC ("frame table entry malloc failed!");
-
-  new_fte->spte = spte;
-  new_fte->touched_by_hand = false;
-  new_fte->thread = t_current;
-  new_fte->kvaddr = palloc_get_page (flags);
-  if (new_fte->kvaddr == NULL)
-    {
-      free (new_fte);
-      // FIXME: implement eviction here
-      PANIC ("No physical memory available, eviction not implemented yet!");
-    }
+  void * kpage;
 
   frame_lock_acquire ();
-  list_push_back (&frame_table, &new_fte->elem);
+  kpage = palloc_get_page (flags);
+  if (kpage == NULL)
+    {
+      struct frame_table_entry *evicted_fte = frame_eviction();
+      if(evicted_fte)
+      {
+        evicted_fte->spte = spte;
+        evicted_fte->touched_by_hand = false;
+        evicted_fte->thread = t_current;
+      }
+    }
+  else
+   {
+     struct frame_table_entry *new_fte = malloc(sizeof(struct frame_table_entry));
+     if (new_fte == NULL)
+       PANIC ("frame table entry malloc failed!");
+
+     new_fte->spte = spte;
+     new_fte->touched_by_hand = false;
+     new_fte->thread = t_current;
+     new_fte->kvaddr = kpage;
+     if(list_empty(&frame_table))
+       list_push_back (&frame_table, &new_fte->elem);
+     else
+       list_insert(list_next(clock_hand), &new_fte->elem);
+     clock_hand = &new_fte->elem;
+   }
+
+
   frame_lock_release ();
-  return new_fte->kvaddr;
+  return kpage;
 }
 
 void
@@ -66,7 +151,24 @@ frame_free_page(struct spage_table_entry *spte)
       break;
     }
   }
-  //FIXME: need to delete the assertion?
+<<<<<<< HEAD
+  /* If clock_hand == the element to remove 
+     [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F2]
+     [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F2] ---(wrap around)---> clock_hand = [F0]
+  */
+  if(clock_hand == &to_free->elem)
+  {
+    if(list_size(&frame_table) == 1)
+      clock_hand = NULL;
+    else
+    {
+      if(list_next(clock_hand) == list_tail(&frame_table))
+        clock_hand = list_begin (&frame_table);
+      else
+        clock_hand = list_next (&to_free->elem);
+    }
+  }
+
   ASSERT (to_free != NULL);
   if (to_free != NULL)
   {

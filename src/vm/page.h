@@ -23,6 +23,7 @@ struct spage_table_entry
     uint32_t zero_bytes;
     off_t offset;
     uint8_t type;           /* type can be modified by other threads during eviction. Read or write of this should have pinned=true */
+    uint32_t swap_idx;
     void* uvaddr;
     bool writable;
     bool pinned;
@@ -43,6 +44,7 @@ bool page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_b
                    uint32_t zero_bytes, bool writable, bool mmaped);
 
 bool page_load_from_file(struct spage_table_entry *spte);
+bool page_load_from_swap(struct spage_table_entry *spte);
 void page_pin(struct spage_table_entry *spte);
 void page_unpin(struct spage_table_entry *spte);
 bool page_get_pinned(struct spage_table_entry *spte);
