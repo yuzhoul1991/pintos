@@ -151,7 +151,7 @@ frame_free_page(struct spage_table_entry *spte)
       break;
     }
   }
-<<<<<<< HEAD
+
   /* If clock_hand == the element to remove 
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F2]
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F2] ---(wrap around)---> clock_hand = [F0]
