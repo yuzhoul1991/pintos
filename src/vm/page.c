@@ -245,6 +245,7 @@ page_free_vaddr(void *vaddr)
         intr_set_level (old_level);
       }
       frame_free_page(spte);
+      pagedir_clear_page (t->pagedir, vaddr);
     }
     else
     {
