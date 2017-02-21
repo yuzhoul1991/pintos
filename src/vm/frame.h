@@ -3,9 +3,11 @@
 
 #include <list.h>
 #include "vm/page.h"
+#include "vm/swap.h"
 #include "threads/palloc.h"
 
 struct list frame_table;
+struct list_elem *clock_hand;
 
 struct frame_table_entry
   {

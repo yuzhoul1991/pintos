@@ -287,7 +287,7 @@ process_free_data_segment(void)
 {
   struct thread *cur = thread_current ();
   if(cur->data_seg_start == 0
-     || cur->data_seg_start == 0)
+     || cur->data_seg_end == 0)
     return;
   void* start_vaddr = cur->data_seg_start;
   void* end_vaddr   = cur->data_seg_end;
@@ -730,12 +730,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   if(writable)
   {
     t->data_seg_start = (void *) upage;
-    t->data_seg_start = t->data_seg_start + read_bytes + zero_bytes;
+    t->data_seg_end = t->data_seg_start + read_bytes + zero_bytes;
   }
   else
   {
     t->code_seg_start = (void *) upage;
-    t->code_seg_start = t->code_seg_start + read_bytes + zero_bytes;
+    t->code_seg_end = t->code_seg_start + read_bytes + zero_bytes;
   }
 
   off_t per_page_off = ofs;

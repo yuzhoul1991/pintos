@@ -163,7 +163,7 @@ page_fault (struct intr_frame *f)
         success = page_load_from_file(spte);
         break;
       case(SPTE_SWAP):
-        PANIC ("swap loading not implemented yet!");
+        success = page_load_from_swap(spte);
         break;
       default:
         PANIC ("You shouldn't page fault in the first place!");

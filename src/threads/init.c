@@ -23,6 +23,7 @@
 #include "threads/pte.h"
 #include "threads/thread.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -128,6 +129,12 @@ main (void)
   locate_block_devices ();
   filesys_lock_init();
   filesys_init (format_filesys);
+#endif
+
+#ifdef USERPROG
+#ifdef VM
+  swap_init ();
+#endif
 #endif
 
   printf ("Boot complete.\n");
