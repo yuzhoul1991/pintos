@@ -43,7 +43,10 @@ syscall_check_valid_user_pointer(void* ptr, bool is_write, bool check_spte)
     }
 
   if (!valid)
+  {
+    process_update_exit_status(-1);
     thread_exit ();
+  }
 }
 
 /* Check if ptr to a buffer is a valid user address which is also mapped for all size bytes. */
@@ -477,8 +480,8 @@ syscall_handler (struct intr_frame *f)
     case(SYS_MMAP):
       fd = (int)syscall_get_arg(f, 4);
       vaddr = (void*)syscall_get_arg(f, 8);
-      syscall_check_valid_user_buffer(vaddr, 0, true, false);
-      syscall_mmap (fd, vaddr);
+      //syscall_check_valid_user_buffer(vaddr, 0, true, false);
+      f->eax = syscall_mmap (fd, vaddr);
       break;
     case(SYS_MUNMAP):
       map_id = (mapid_t)syscall_get_arg(f, 4);
@@ -486,6 +489,7 @@ syscall_handler (struct intr_frame *f)
       break;
     default:
       printf ("syscall not implemented\n");
+      process_update_exit_status(-1);
       thread_exit ();
       break;
   }

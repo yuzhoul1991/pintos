@@ -149,6 +149,7 @@ struct thread
     struct child_info* parent_child_info; /* If this Process is a child, Pointer to child_info about itself stored in parent's child_list*/
     struct file *executable;              /* pointer to struct file of executable */
     char process_name[15];                /* Name of the process given passed in process_execute. */
+    bool exit_status_updated;         /* indicates if process_update_exit_status() was called */
     int exit_status;                      /* Exit status of the thread */
     struct hash spage_table;              /* Per process suplimental page table */
 #endif

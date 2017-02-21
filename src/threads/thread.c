@@ -492,7 +492,8 @@ init_thread (struct thread *t, const char *name, int priority)
     t->parent_child_info = NULL;
     t->executable = NULL;
     strlcpy (t->process_name, "", sizeof t->process_name);
-    t->exit_status = -1;
+    t->exit_status_updated = false;
+    t->exit_status = 0;
   #endif
 
   old_level = intr_disable ();

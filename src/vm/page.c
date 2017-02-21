@@ -261,10 +261,8 @@ page_free_vaddr(void *vaddr)
           /* Write mmaped file. */
           void* kpage = frame_get_kpage(spte);
           filesys_lock ();
-          off_t bytes_write = file_write (spte->file, kpage, PGSIZE);
+          file_write (spte->file, kpage, PGSIZE);
           filesys_unlock ();
-          if (bytes_write != PGSIZE)
-            PANIC ("page_free_vaddr: Not writing PGSIZE dirty bytes to file");
         }
 
         intr_set_level (old_level);
