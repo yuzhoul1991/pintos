@@ -278,6 +278,7 @@ process_free_code_segment(void)
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
   {
+    // printf ("[code seg free] 0x%08x\n", (uint32_t)vaddr);
     page_free_vaddr(vaddr);
   }
 }
@@ -294,6 +295,7 @@ process_free_data_segment(void)
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
   {
+    // printf ("[data seg free] 0x%08x\n", (uint32_t)vaddr);
     page_free_vaddr(vaddr);
   }
 }
@@ -309,6 +311,7 @@ process_free_stack_segment(void)
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
   {
+    // printf ("[stack free] 0x%08x\n", (uint32_t)vaddr);
     page_free_vaddr(vaddr);
   }
 }

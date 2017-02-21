@@ -8,19 +8,19 @@
 // lock for frame allocator
 static struct lock lock;
 
-void 
+void
 frame_lock_acquire()
 {
   lock_acquire(&lock);
 }
 
-void 
+void
 frame_lock_release()
 {
   lock_release(&lock);
 }
 
-void 
+void
 frame_table_init()
 {
   lock_init(&lock);
@@ -95,7 +95,7 @@ frame_eviction(void)
   return evicted_frame;
 }
 
-void * 
+void *
 frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
 {
   struct thread* t_current = thread_current ();
@@ -135,7 +135,7 @@ frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
   return kpage;
 }
 
-void 
+void
 frame_free_page(struct spage_table_entry *spte)
 {
   struct list_elem *e;
@@ -151,6 +151,7 @@ frame_free_page(struct spage_table_entry *spte)
       break;
     }
   }
+<<<<<<< HEAD
   /* If clock_hand == the element to remove 
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F2]
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F2] ---(wrap around)---> clock_hand = [F0]
@@ -168,7 +169,8 @@ frame_free_page(struct spage_table_entry *spte)
     }
   }
 
-  if(to_free != NULL)
+  ASSERT (to_free != NULL);
+  if (to_free != NULL)
   {
     list_remove (&to_free->elem);
     palloc_free_page (to_free->kvaddr);
@@ -177,7 +179,7 @@ frame_free_page(struct spage_table_entry *spte)
   frame_lock_release ();
 }
 
-void * 
+void *
 frame_get_kpage(struct spage_table_entry *spte)
 {
   struct list_elem *e;
