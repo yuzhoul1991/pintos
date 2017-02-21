@@ -201,7 +201,7 @@ page_load_from_swap(struct spage_table_entry *spte)
       frame_free_page (spte);
       return false;
     }
-  //FIXME
+  
   swap_read_idx(spte->swap_idx, kpage);
 
   return true;

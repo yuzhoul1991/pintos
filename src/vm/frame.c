@@ -82,7 +82,7 @@ frame_eviction(void)
       {
         evicted_frame->spte->type = SPTE_SWAP;
         evicted_frame->spte->swap_idx = swap_get_idx();
-        //FIXME
+        
         swap_write_idx(evicted_frame->spte->swap_idx, evicted_frame->kvaddr);
       }
     }

@@ -27,7 +27,14 @@ void
 swap_read_idx (uint32_t idx, void *kpage)
 {
   lock_acquire(&swap_lock);
-  block_read (swap_block, idx*bitmap_to_sector, kpage);
+  uint32_t sector_offset;
+  uint32_t sector_start = idx*bitmap_to_sector;
+  void *kpage_offset = kpage;
+  for(sector_offset = 0; sector_offset<bitmap_to_sector; sector_offset++)
+  {
+    block_read (swap_block, sector_start+sector_offset, kpage_offset);
+    kpage_offset+=BLOCK_SECTOR_SIZE;
+  }
   lock_release(&swap_lock);
 
 }
@@ -36,7 +43,14 @@ void
 swap_write_idx (uint32_t idx, void *kpage)
 {
   lock_acquire(&swap_lock);
-  block_write (swap_block, idx*bitmap_to_sector, kpage);
+  uint32_t sector_offset;
+  uint32_t sector_start = idx*bitmap_to_sector;
+  void *kpage_offset = kpage;
+  for(sector_offset = 0; sector_offset<bitmap_to_sector; sector_offset++)
+  {
+    block_write (swap_block, sector_start+sector_offset, kpage_offset);
+    kpage_offset+=BLOCK_SECTOR_SIZE;
+  }
   lock_release(&swap_lock);
 
 }
