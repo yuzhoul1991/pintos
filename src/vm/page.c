@@ -12,14 +12,14 @@
 #include "threads/interrupt.h"
 #include "userprog/pagedir.h"
 
-static unsigned 
+static unsigned
 spage_hash_hash_func (const struct hash_elem *e, void *aux UNUSED)
 {
   struct spage_table_entry *spte = hash_entry (e, struct spage_table_entry, elem);
   return hash_int((int)spte->uvaddr);
 }
 
-static bool 
+static bool
 spage_hash_less_func (const struct hash_elem *a,
                       const struct hash_elem *b,
                       void *aux UNUSED)
@@ -31,26 +31,26 @@ spage_hash_less_func (const struct hash_elem *a,
   return false;
 }
 
-static void 
+static void
 spage_free_hash_action_func (struct hash_elem *e, void *aux UNUSED)
 {
   struct spage_table_entry *spte = hash_entry (e, struct spage_table_entry, elem);
   free (spte);
 }
 
-void 
+void
 page_init(struct thread *t)
 {
   hash_init (&t->spage_table, spage_hash_hash_func, spage_hash_less_func, NULL);
 }
 
-void 
+void
 page_free(struct thread *t)
 {
   hash_destroy(&t->spage_table, spage_free_hash_action_func);
 }
 
-bool 
+bool
 grow_stack(void* uvaddr)
 {
   if ((uint32_t)(pg_round_down(uvaddr)) < STACK_LIMIT)
@@ -59,7 +59,7 @@ grow_stack(void* uvaddr)
     }
 
   struct thread * t_current = thread_current ();
-  t_current->stack_start-=PGSIZE;
+  t_current->stack_start -= PGSIZE;
   struct spage_table_entry *new_spte = malloc (sizeof(struct spage_table_entry));
   if (new_spte == NULL)
     return false;
@@ -96,7 +96,7 @@ grow_stack(void* uvaddr)
   return true;
 }
 
-struct spage_table_entry* 
+struct spage_table_entry*
 page_get_spte(void* fault_addr)
 {
   struct spage_table_entry probe;
@@ -108,7 +108,7 @@ page_get_spte(void* fault_addr)
   return hash_entry (e, struct spage_table_entry, elem);
 }
 
-bool 
+bool
 page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
                    uint32_t zero_bytes, bool writable, bool mmaped)
 {
@@ -135,7 +135,7 @@ page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
   return true;
 }
 
-bool 
+bool
 page_load_from_file(struct spage_table_entry *spte)
 {
   ASSERT (spte != NULL);
@@ -226,9 +226,10 @@ page_free_vaddr(void *vaddr)
         /* Disable interrupts when accessing PTE Dirty. It could be SET by CPU anytime */
         enum intr_level old_level;
         old_level = intr_disable ();
-    
+
         if(pagedir_is_dirty(t->pagedir, vaddr))
         {
+          // FIXME: need lock? interrupt is disabled
           filesys_lock ();
           file_seek (spte->file, spte->offset);
           filesys_unlock ();
@@ -255,7 +256,8 @@ page_free_vaddr(void *vaddr)
     }
 
     page_unpin(spte);
-   
+
+    hash_delete (&t->spage_table, &spte->elem);
     free(spte);
   }
 }

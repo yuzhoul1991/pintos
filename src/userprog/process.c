@@ -278,6 +278,7 @@ process_free_code_segment(void)
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
   {
+    // printf ("[code seg free] 0x%08x\n", (uint32_t)vaddr);
     page_free_vaddr(vaddr);
   }
 }
@@ -294,6 +295,7 @@ process_free_data_segment(void)
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
   {
+    // printf ("[data seg free] 0x%08x\n", (uint32_t)vaddr);
     page_free_vaddr(vaddr);
   }
 }
@@ -309,6 +311,7 @@ process_free_stack_segment(void)
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
   {
+    // printf ("[stack free] 0x%08x\n", (uint32_t)vaddr);
     page_free_vaddr(vaddr);
   }
 }
@@ -730,12 +733,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   if(writable)
   {
     t->data_seg_start = (void *) upage;
-    t->data_seg_start = t->data_seg_start + read_bytes + zero_bytes;
+    t->data_seg_end = t->data_seg_start + read_bytes + zero_bytes;
   }
   else
   {
     t->code_seg_start = (void *) upage;
-    t->code_seg_start = t->code_seg_start + read_bytes + zero_bytes;
+    t->code_seg_end = t->code_seg_start + read_bytes + zero_bytes;
   }
 
   off_t per_page_off = ofs;

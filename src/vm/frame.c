@@ -6,26 +6,26 @@
 // lock for frame allocator
 static struct lock lock;
 
-void 
+void
 frame_lock_acquire()
 {
   lock_acquire(&lock);
 }
 
-void 
+void
 frame_lock_release()
 {
   lock_release(&lock);
 }
 
-void 
+void
 frame_table_init()
 {
   lock_init(&lock);
   list_init(&frame_table);
 }
 
-void * 
+void *
 frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
 {
   struct thread* t_current = thread_current ();
@@ -50,7 +50,7 @@ frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
   return new_fte->kvaddr;
 }
 
-void 
+void
 frame_free_page(struct spage_table_entry *spte)
 {
   struct list_elem *e;
@@ -66,13 +66,18 @@ frame_free_page(struct spage_table_entry *spte)
       break;
     }
   }
-  list_remove (&to_free->elem);
+  //FIXME: need to delete the assertion?
+  ASSERT (to_free != NULL);
+  if (to_free != NULL)
+  {
+    list_remove (&to_free->elem);
+    palloc_free_page (to_free->kvaddr);
+    free (to_free);
+  }
   frame_lock_release ();
-  palloc_free_page (to_free->kvaddr);
-  free (to_free);
 }
 
-void * 
+void *
 frame_get_kpage(struct spage_table_entry *spte)
 {
   struct list_elem *e;
