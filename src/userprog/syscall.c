@@ -93,6 +93,13 @@ syscall_invalid_mmap_address(struct thread *t, void* vaddr_start, void* vaddr_en
       return true;
   }
 
+  if((t->stack_start != PHYS_BASE) && (t->stack_end == PHYS_BASE))
+  {
+    if(syscall_vaddr_between_addrs(vaddr_start, t->stack_start, t->stack_end)
+       || syscall_vaddr_between_addrs(vaddr_end, t->stack_start, t->stack_end))
+      return true;
+  }
+
   if(!list_empty(&t->mmap_list))
   {
     struct list_elem *e;
