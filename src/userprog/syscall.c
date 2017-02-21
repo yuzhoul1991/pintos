@@ -64,10 +64,10 @@ syscall_check_valid_user_buffer(void* ptr, size_t size, bool is_write, bool chec
     }
 }
 
-static bool 
+static bool
 syscall_vaddr_between_addrs(void* vaddr, void* start_vaddr, void* end_vaddr)
-{ 
-  return (vaddr >= start_vaddr && vaddr < end_vaddr); 
+{
+  return (vaddr >= start_vaddr && vaddr < end_vaddr);
 }
 
 static bool
@@ -75,10 +75,10 @@ syscall_invalid_mmap_address(struct thread *t, void* vaddr_start, void* vaddr_en
 {
   if (vaddr_start == 0)
     return true;
-  
+
   if ((uint32_t)vaddr_start % PGSIZE != 0)
     return true;
-  
+
   if((t->code_seg_start != 0) && (t->code_seg_end != 0))
   {
     if(syscall_vaddr_between_addrs(vaddr_start, t->code_seg_start, t->code_seg_end)
@@ -339,7 +339,7 @@ syscall_mmap (int fd, void *vaddr)
   /* Find the struct file * corresponding to fd */
   struct list_elem *e = thread_find_fd(t, fd);
   struct file_info *f_info = NULL;
-  uint32_t length = 0; 
+  uint32_t length = 0;
 
   if(e != NULL)
   {
@@ -459,7 +459,7 @@ syscall_handler (struct intr_frame *f)
       fd = (int)syscall_get_arg(f, 4);
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
-      syscall_check_valid_user_buffer(buffer, file_size, false, true);
+      syscall_check_valid_user_buffer(buffer, file_size, true, true);
       //FIXME: Pin buffer vaddr
       f->eax = syscall_read(fd, buffer, file_size);
       break;
@@ -467,7 +467,7 @@ syscall_handler (struct intr_frame *f)
       fd = (int)syscall_get_arg(f, 4);
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
-      syscall_check_valid_user_buffer(buffer, file_size, true, true);
+      syscall_check_valid_user_buffer(buffer, file_size, false, true);
       //FIXME: Pin buffer vaddr
       f->eax = syscall_write(fd, buffer, file_size);
       break;
