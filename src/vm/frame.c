@@ -48,14 +48,14 @@ frame_eviction(void)
     else
     {
       if(!potential_frame->spte->pinned)
-      {
         evicted_frame = potential_frame;
-        break;
-      }
     }
 
     intr_set_level (old_level);
     lock_release(&potential_frame->spte->entry_lock);
+
+    if(evicted_frame != NULL)
+      break;
   }
 
   if(evicted_frame)
@@ -66,6 +66,8 @@ frame_eviction(void)
 
     if(pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->spte->uvaddr))
     {
+      pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->spte->uvaddr);
+      intr_set_level (old_level);
       if(evicted_frame->spte->type == SPTE_MMAP)
       {
           filesys_lock ();
@@ -86,9 +88,12 @@ frame_eviction(void)
         swap_write_idx(evicted_frame->spte->swap_idx, evicted_frame->kvaddr);
       }
     }
-    pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->spte->uvaddr);
+    else
+    {
+      pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->spte->uvaddr);
+      intr_set_level (old_level);
+    }
 
-    intr_set_level (old_level);
     lock_release(&evicted_frame->spte->entry_lock);
   }
   
@@ -111,6 +116,7 @@ frame_get_page(enum palloc_flags flags, struct spage_table_entry *spte)
         evicted_fte->spte = spte;
         evicted_fte->touched_by_hand = false;
         evicted_fte->thread = t_current;
+        kpage = evicted_fte->kvaddr;
       }
     }
   else
