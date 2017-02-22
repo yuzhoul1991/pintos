@@ -60,41 +60,53 @@ grow_stack(void* uvaddr)
     }
 
   struct thread * t_current = thread_current ();
-  t_current->stack_start -= PGSIZE;
-  struct spage_table_entry *new_spte = malloc (sizeof(struct spage_table_entry));
-  if (new_spte == NULL)
-    return false;
+  void * this_page_start = pg_round_down (uvaddr);
 
-  new_spte->file = NULL;
-  new_spte->read_bytes = 0;
-  new_spte->zero_bytes = 0;
-  new_spte->offset = 0;
-  new_spte->type = SPTE_ZERO;
-  new_spte->swap_idx = 0;
-  new_spte->uvaddr = pg_round_down(uvaddr);
-  new_spte->writable = true;
-  new_spte->pinned = true;
-  lock_init(&new_spte->entry_lock);
-
-  // Ask the frame allocator for a new physical page
-  uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER | PAL_ZERO, new_spte);
-  if (kpage == NULL)
+  while (t_current->stack_start > this_page_start)
     {
-      free (new_spte);
-      return false;
+      ASSERT (pg_ofs(t_current->stack_start) == 0);
+
+      t_current->stack_start -= PGSIZE;
+      struct spage_table_entry *new_spte = malloc (sizeof(struct spage_table_entry));
+      if (new_spte == NULL)
+        return false;
+
+      new_spte->file = NULL;
+      new_spte->read_bytes = 0;
+      new_spte->zero_bytes = 0;
+      new_spte->offset = 0;
+      new_spte->type = SPTE_ZERO;
+      new_spte->swap_idx = 0;
+      new_spte->uvaddr = t_current->stack_start;
+      new_spte->writable = true;
+      new_spte->pinned = true;
+      lock_init(&new_spte->entry_lock);
+
+      // only allocate physical page for this page
+      if (t_current->stack_start == this_page_start)
+        {
+          // Ask the frame allocator for a new physical page
+          uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER | PAL_ZERO, new_spte);
+          if (kpage == NULL)
+            {
+              free (new_spte);
+              return false;
+            }
+
+          // Successfully got a physical page install the page
+          if (!install_page(new_spte->uvaddr, kpage, true))
+            {
+              free (new_spte);
+              return false;
+            }
+
+          memset (kpage, 0, PGSIZE);
+        }
+      hash_insert (&t_current->spage_table, &new_spte->elem);
+
+      page_unpin(new_spte);
     }
 
-  // Successfully got a physical page install the page
-  if (!install_page(new_spte->uvaddr, kpage, true))
-    {
-      free (new_spte);
-      return false;
-    }
-
-  hash_insert (&t_current->spage_table, &new_spte->elem);
-  memset (kpage, 0, PGSIZE);
-
-  page_unpin(new_spte);
   return true;
 }
 
@@ -135,6 +147,34 @@ page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
   lock_init(&new_spte->entry_lock);
 
   hash_insert (&t_current->spage_table, &new_spte->elem);
+  return true;
+}
+
+bool
+page_load_for_stack(struct spage_table_entry *spte)
+{
+  ASSERT (spte != NULL);
+
+  struct thread* t_current = thread_current ();
+
+  uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER | PAL_ZERO, spte);
+  if (kpage == NULL)
+    {
+      hash_delete (&t_current->spage_table, &spte->elem);
+      free (spte);
+      return false;
+    }
+
+  if (!install_page(spte->uvaddr, kpage, true))
+    {
+      hash_delete (&t_current->spage_table, &spte->elem);
+      free (spte);
+      return false;
+    }
+
+  memset (kpage, 0, PGSIZE);
+
+  page_unpin(spte);
   return true;
 }
 
@@ -185,7 +225,7 @@ page_load_from_file(struct spage_table_entry *spte)
   return true;
 }
 
-bool 
+bool
 page_load_from_swap(struct spage_table_entry *spte)
 {
   ASSERT (spte != NULL);
@@ -193,7 +233,7 @@ page_load_from_swap(struct spage_table_entry *spte)
   void *kpage = frame_get_page(PAL_USER, spte);
   if (kpage == NULL)
     PANIC ("No frames available even after implementing eviction");
-  
+
 
   /* Add the page to the process's address space. */
   if (!install_page (spte->uvaddr, kpage, spte->writable))
@@ -201,7 +241,7 @@ page_load_from_swap(struct spage_table_entry *spte)
       frame_free_page (spte);
       return false;
     }
-  
+
   swap_read_idx(spte->swap_idx, kpage);
 
   return true;

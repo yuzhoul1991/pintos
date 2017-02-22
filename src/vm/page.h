@@ -45,6 +45,7 @@ bool page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_b
 
 bool page_load_from_file(struct spage_table_entry *spte);
 bool page_load_from_swap(struct spage_table_entry *spte);
+bool page_load_for_stack(struct spage_table_entry *spte);
 void page_pin(struct spage_table_entry *spte);
 void page_unpin(struct spage_table_entry *spte);
 bool page_get_pinned(struct spage_table_entry *spte);

@@ -167,6 +167,9 @@ page_fault (struct intr_frame *f)
       case(SPTE_SWAP):
         success = page_load_from_swap(spte);
         break;
+      case(SPTE_ZERO):
+        success = page_load_for_stack(spte);
+        break;
       default:
         PANIC ("You shouldn't page fault in the first place!");
         break;
