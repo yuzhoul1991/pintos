@@ -92,7 +92,6 @@ kill (struct intr_frame *f)
       printf ("%s: dying due to interrupt %#04x (%s).\n",
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
-      process_update_exit_status(-1);
       thread_exit ();
 
     case SEL_KCSEG:
@@ -108,7 +107,6 @@ kill (struct intr_frame *f)
          kernel. */
       printf ("Interrupt %#04x (%s) in unknown segment %04x\n",
              f->vec_no, intr_name (f->vec_no), f->cs);
-      process_update_exit_status(-1);
       thread_exit ();
     }
 }
@@ -180,10 +178,7 @@ page_fault (struct intr_frame *f)
       if (is_user_vaddr(fault_addr) && fault_addr >= f->esp - STACK_REACH_LIMIT)
         success = grow_stack (fault_addr);
       else
-      {
-        process_update_exit_status(-1);
         thread_exit ();
-      }
     }
 
   if (!success)

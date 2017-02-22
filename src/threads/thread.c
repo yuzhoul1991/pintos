@@ -13,6 +13,8 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -492,8 +494,7 @@ init_thread (struct thread *t, const char *name, int priority)
     t->parent_child_info = NULL;
     t->executable = NULL;
     strlcpy (t->process_name, "", sizeof t->process_name);
-    t->exit_status_updated = false;
-    t->exit_status = 0;
+    t->exit_status = -1;
   #endif
 
   old_level = intr_disable ();
@@ -670,6 +671,9 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 void
 thread_munmap(struct mmap_info *m_info)
 {
+  filesys_lock ();
+  file_close(m_info->file_ptr);
+  filesys_unlock ();
   void* start_vaddr = m_info->vaddr_start;
   void* end_vaddr   = m_info->vaddr_end;
   void* vaddr;

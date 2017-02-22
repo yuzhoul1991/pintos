@@ -46,13 +46,10 @@ process_execute (const char *file_name)
   /* Create new child info for the process you are trying to create */
   struct child_info *c_info = malloc(sizeof(struct child_info));
   if (c_info == NULL)
-  {
-    process_update_exit_status(-1);
     thread_exit ();
-  }
 
   c_info->loaded = false;
-  c_info->exit_status = 0;
+  c_info->exit_status = -1;
   c_info->child_thread = NULL;
   sema_init(&c_info->sema_load,0);
   sema_init(&c_info->sema_exit,0);
@@ -139,10 +136,7 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success)
-  {
-    process_update_exit_status(-1);
     thread_exit ();
-  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -251,7 +245,6 @@ process_update_exit_status(int status)
   if(cur->parent_child_info != NULL)
     cur->parent_child_info->exit_status = status;
   intr_set_level (old_level);
-  cur->exit_status_updated = true;
   cur->exit_status = status;
 }
 
@@ -414,10 +407,7 @@ static void
 process_print_exit_msg(void)
 {
   struct thread *cur = thread_current ();
-  if(cur->exit_status_updated)
-    printf("%s: exit(%d)\n",cur->process_name,cur->exit_status);
-  else
-    printf("%s: exit\n",cur->process_name);
+  printf("%s: exit(%d)\n",cur->process_name,cur->exit_status);
 }
 
 void

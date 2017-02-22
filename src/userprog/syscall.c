@@ -43,10 +43,7 @@ syscall_check_valid_user_pointer(void* ptr, bool is_write, bool check_spte)
     }
 
   if (!valid)
-  {
-    process_update_exit_status(-1);
     thread_exit ();
-  }
 }
 
 /* Check if ptr to a buffer is a valid user address which is also mapped for all size bytes. */
@@ -363,6 +360,10 @@ syscall_mmap (int fd, void *vaddr)
     m_info->vaddr_start = vaddr;
     m_info->vaddr_end = (pg_round_up(vaddr+length));
     m_info->mmap_size = length;
+    filesys_lock ();
+    m_info->file_ptr = file_reopen(f_info->file_ptr);
+    filesys_unlock ();
+    m_info->mapid = t->total_mmaps;
     t->total_mmaps++;
     list_push_back (&t->mmap_list, &m_info->mmap_elem);
 
@@ -376,7 +377,7 @@ syscall_mmap (int fd, void *vaddr)
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
         /* Setup spte for this file page */
-        if(!page_add_file (upage, f_info->file_ptr, per_page_off, page_read_bytes, page_zero_bytes, true, true))
+        if(!page_add_file (upage, m_info->file_ptr, per_page_off, page_read_bytes, page_zero_bytes, true, true))
           return MAP_FAILED;
 
         /* Advance. */
@@ -496,7 +497,6 @@ syscall_handler (struct intr_frame *f)
       break;
     default:
       printf ("syscall not implemented\n");
-      process_update_exit_status(-1);
       thread_exit ();
       break;
   }
