@@ -248,13 +248,9 @@ page_free_vaddr(void *vaddr)
       //When freeing vaddr, Only MMAP has to writeback to file
       if(spte->type == SPTE_MMAP)
       {
-        /* Disable interrupts when accessing PTE Dirty. It could be SET by CPU anytime */
-        enum intr_level old_level;
-        old_level = intr_disable ();
 
         if(pagedir_is_dirty(t->pagedir, vaddr))
         {
-          // FIXME: need lock? interrupt is disabled
           filesys_lock ();
           file_seek (spte->file, spte->offset);
           filesys_unlock ();
@@ -265,7 +261,6 @@ page_free_vaddr(void *vaddr)
           filesys_unlock ();
         }
 
-        intr_set_level (old_level);
       }
       frame_free_page(spte);
       pagedir_clear_page(t->pagedir, vaddr);

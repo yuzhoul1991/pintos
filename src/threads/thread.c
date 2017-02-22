@@ -671,14 +671,13 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 void
 thread_munmap(struct mmap_info *m_info)
 {
-  filesys_lock ();
-  file_close(m_info->file_ptr);
-  filesys_unlock ();
   void* start_vaddr = m_info->vaddr_start;
   void* end_vaddr   = m_info->vaddr_end;
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
-  {
     page_free_vaddr(vaddr);
-  }
+
+  filesys_lock ();
+  file_close(m_info->file_ptr);
+  filesys_unlock ();
 }
