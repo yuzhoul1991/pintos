@@ -86,7 +86,7 @@ grow_stack(void* uvaddr)
       if (t_current->stack_start == this_page_start)
         {
           // Ask the frame allocator for a new physical page
-          uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER | PAL_ZERO, new_spte);
+          uint8_t *kpage = frame_get_page(PAL_USER | PAL_ZERO, new_spte);
           if (kpage == NULL)
             {
               free (new_spte);
@@ -157,7 +157,7 @@ page_load_for_stack(struct spage_table_entry *spte)
 
   struct thread* t_current = thread_current ();
 
-  uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER | PAL_ZERO, spte);
+  uint8_t *kpage = frame_get_page(PAL_USER | PAL_ZERO, spte);
   if (kpage == NULL)
     {
       hash_delete (&t_current->spage_table, &spte->elem);
@@ -189,7 +189,7 @@ page_load_from_file(struct spage_table_entry *spte)
   size_t page_read_bytes = spte->read_bytes;
   size_t page_zero_bytes = spte->zero_bytes;
 
-  uint32_t *kpage = (uint32_t*)frame_get_page(PAL_USER, spte);
+  uint8_t *kpage = frame_get_page(PAL_USER, spte);
   if (kpage == NULL)
     PANIC ("No frames available even after implementing eviction");
 
@@ -230,7 +230,7 @@ page_load_from_swap(struct spage_table_entry *spte)
 {
   ASSERT (spte != NULL);
 
-  void *kpage = frame_get_page(PAL_USER, spte);
+  uint8_t *kpage = frame_get_page(PAL_USER, spte);
   if (kpage == NULL)
     PANIC ("No frames available even after implementing eviction");
 
@@ -295,7 +295,7 @@ page_free_vaddr(void *vaddr)
           file_seek (spte->file, spte->offset);
           filesys_unlock ();
           /* Write mmaped file. */
-          void* kpage = frame_get_kpage(spte);
+          uint8_t *kpage = frame_get_kpage(spte);
           filesys_lock ();
           file_write (spte->file, kpage, PGSIZE);
           filesys_unlock ();
