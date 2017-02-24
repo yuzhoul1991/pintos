@@ -230,6 +230,7 @@ page_load_from_swap(struct spage_table_entry *spte)
 {
   ASSERT (spte != NULL);
 
+  struct thread *t = thread_current ();
   uint8_t *kpage = frame_get_page(PAL_USER, spte);
   if (kpage == NULL)
     PANIC ("No frames available even after implementing eviction");
@@ -241,8 +242,10 @@ page_load_from_swap(struct spage_table_entry *spte)
       frame_free_page (spte);
       return false;
     }
+  pagedir_set_dirty(t->pagedir, spte->uvaddr, true);
 
   swap_read_idx(spte->swap_idx, kpage);
+  swap_release_idx(spte->swap_idx);
 
   return true;
 }

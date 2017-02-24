@@ -62,5 +62,7 @@ swap_get_idx (void)
   lock_acquire(&swap_lock);
   idx = bitmap_scan_and_flip(swap_bitmap, 0, 1, false);
   lock_release(&swap_lock);
+  if(idx == BITMAP_ERROR)
+    PANIC ("No swap slot found");
   return idx;
 }
