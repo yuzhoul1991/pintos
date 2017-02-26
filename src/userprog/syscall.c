@@ -16,6 +16,8 @@
 #include "devices/input.h"
 static void syscall_handler (struct intr_frame *);
 
+#define UNPIN 1
+#define PIN   0
 void
 syscall_init (void)
 {
@@ -24,62 +26,86 @@ syscall_init (void)
 
 /* Check if ptr is a valid user address which is also mapped */
 static void
-syscall_check_valid_user_pointer(void* ptr, bool is_write, bool check_spte)
+syscall_check_valid_user_pointer(void* ptr, bool is_write, bool unpin)
 {
   bool valid = ptr != NULL;
 
   valid &= is_user_vaddr (ptr);
 
-  if(check_spte)
+  struct spage_table_entry *spte = page_get_spte(ptr);
+
+  valid &= spte != NULL;
+
+  if (spte && is_write)
     {
-      struct spage_table_entry *spte = page_get_spte(ptr);
-
-      valid &= spte != NULL;
-
-      if (spte && is_write)
+      valid &= spte->writable;
+    }
+  if (valid && spte)
+    {
+      bool success = false;
+      page_pin(spte);
+      if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
+      {
+        switch(spte->type)
         {
-          valid &= spte->writable;
+          case(SPTE_FILE):
+          case(SPTE_MMAP):
+            success = page_load_from_file(spte);
+            break;
+          case(SPTE_SWAP):
+            success = page_load_from_swap(spte);
+            break;
+          case(SPTE_ZERO):
+            success = page_load_for_stack(spte);
+            break;
+          default:
+            PANIC ("You shouldn't page fault in the first place!");
+            break;
         }
-        if (valid && spte && (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL))
-        {
-          bool success = false;
-          page_pin(spte);
-          switch(spte->type)
-          {
-            case(SPTE_FILE):
-            case(SPTE_MMAP):
-              success = page_load_from_file(spte);
-              break;
-            case(SPTE_SWAP):
-              success = page_load_from_swap(spte);
-              break;
-            case(SPTE_ZERO):
-              success = page_load_for_stack(spte);
-              break;
-            default:
-              PANIC ("You shouldn't page fault in the first place!");
-              break;
-          }
-          page_unpin(spte);
-          valid &= success;
-        }
+        valid &= success;
+      }
+      if(unpin)
+        page_unpin(spte);
     }
 
   if (!valid)
     thread_exit ();
 }
 
+static void
+syscall_unpin_user_pointer(void* ptr)
+{
+  struct spage_table_entry *spte = page_get_spte(ptr);
+
+  if (spte)
+      page_unpin(spte);
+}
+
 /* Check if ptr to a buffer is a valid user address which is also mapped for all size bytes. */
 static void
-syscall_check_valid_user_buffer(void* ptr, size_t size, bool is_write, bool check_spte)
+syscall_check_valid_user_buffer(void* ptr, size_t size, bool is_write, bool unpin)
 {
-  syscall_check_valid_user_pointer(ptr, is_write, check_spte);
+  syscall_check_valid_user_pointer(ptr, is_write, unpin);
   uint32_t *up_limit = (uint32_t*)ptr + size / 4;
   uint32_t *check_ptr = (uint32_t*)ROUND_DOWN ((int)ptr, PGSIZE);
 
   while (check_ptr <= (uint32_t*)up_limit)
     {
-      syscall_check_valid_user_pointer(check_ptr, is_write, check_spte);
+      syscall_check_valid_user_pointer(check_ptr, is_write, unpin);
+      check_ptr += PGSIZE / 4;
+    }
+}
+
+static void
+syscall_unpin_user_buffer(void* ptr, size_t size)
+{
+  syscall_unpin_user_pointer(ptr);
+  uint32_t *up_limit = (uint32_t*)ptr + size / 4;
+  uint32_t *check_ptr = (uint32_t*)ROUND_DOWN ((int)ptr, PGSIZE);
+
+  while (check_ptr <= (uint32_t*)up_limit)
+    {
+      syscall_unpin_user_pointer(check_ptr);
       check_ptr += PGSIZE / 4;
     }
 }
@@ -139,7 +165,7 @@ syscall_invalid_mmap_address(struct thread *t, void* vaddr_start, void* vaddr_en
 static int
 syscall_get_number(struct intr_frame *f)
 {
-  syscall_check_valid_user_pointer (f->esp, false, true);
+  syscall_check_valid_user_pointer (f->esp, false, UNPIN);
   return *((uint32_t*)f->esp);
 }
 
@@ -147,7 +173,7 @@ syscall_get_number(struct intr_frame *f)
 static uint32_t
 syscall_get_arg(struct intr_frame *f, uint32_t offset)
 {
-  syscall_check_valid_user_pointer(f->esp + offset, false, true);
+  syscall_check_valid_user_pointer(f->esp + offset, false, UNPIN);
   return *(uint32_t*)(f->esp + offset);
 }
 
@@ -452,8 +478,9 @@ syscall_handler (struct intr_frame *f)
       break;
     case(SYS_EXEC):
       command_line = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(command_line, false, true);
+      syscall_check_valid_user_pointer(command_line, false, PIN);
       f->eax = syscall_exec (command_line);
+      syscall_unpin_user_pointer(command_line);
       break;
     case(SYS_WAIT):
       pid = (pid_t)syscall_get_arg(f, 4);
@@ -461,19 +488,22 @@ syscall_handler (struct intr_frame *f)
       break;
     case(SYS_CREATE):
       file_name = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(file_name, false, true);
+      syscall_check_valid_user_pointer(file_name, false, PIN);
       file_size = (unsigned)syscall_get_arg(f, 8);
       f->eax = syscall_create (file_name, file_size);
+      syscall_unpin_user_pointer(file_name);
       break;
     case(SYS_REMOVE):
       file_name = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(file_name, false, true);
+      syscall_check_valid_user_pointer(file_name, false, PIN);
       f->eax = syscall_remove (file_name);
+      syscall_unpin_user_pointer(file_name);
       break;
     case(SYS_OPEN):
       file_name = (char *)syscall_get_arg(f, 4);
-      syscall_check_valid_user_pointer(file_name, false, true);
+      syscall_check_valid_user_pointer(file_name, false, PIN);
       f->eax = syscall_open (file_name);
+      syscall_unpin_user_pointer(file_name);
       break;
     case(SYS_FILESIZE):
       fd = (int)syscall_get_arg(f, 4);
@@ -483,17 +513,17 @@ syscall_handler (struct intr_frame *f)
       fd = (int)syscall_get_arg(f, 4);
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
-      syscall_check_valid_user_buffer(buffer, file_size, true, true);
-      //FIXME: Pin buffer vaddr
+      syscall_check_valid_user_buffer(buffer, file_size, true, PIN);
       f->eax = syscall_read(fd, buffer, file_size);
+      syscall_unpin_user_buffer(buffer, file_size);
       break;
     case(SYS_WRITE):
       fd = (int)syscall_get_arg(f, 4);
       buffer = (void*)syscall_get_arg(f, 8);
       file_size = (unsigned)syscall_get_arg(f, 12);
-      syscall_check_valid_user_buffer(buffer, file_size, false, true);
-      //FIXME: Pin buffer vaddr
+      syscall_check_valid_user_buffer(buffer, file_size, false, PIN);
       f->eax = syscall_write(fd, buffer, file_size);
+      syscall_unpin_user_buffer(buffer, file_size);
       break;
     case(SYS_SEEK):
       fd = (int)syscall_get_arg(f, 4);
@@ -511,7 +541,6 @@ syscall_handler (struct intr_frame *f)
     case(SYS_MMAP):
       fd = (int)syscall_get_arg(f, 4);
       vaddr = (void*)syscall_get_arg(f, 8);
-      //syscall_check_valid_user_buffer(vaddr, 0, true, false);
       f->eax = syscall_mmap (fd, vaddr);
       break;
     case(SYS_MUNMAP):
