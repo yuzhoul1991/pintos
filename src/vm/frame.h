@@ -6,16 +6,15 @@
 #include "vm/swap.h"
 #include "threads/palloc.h"
 
-struct list frame_table;
-struct list_elem *clock_hand;
+struct list frame_table;       /* Frame table which is a list of frames in use */
+struct list_elem *clock_hand;  /* Clock hand which points to an element in frame_table list */
 
 struct frame_table_entry
   {
-    struct spage_table_entry *spte;
-    struct list_elem elem;
-    struct thread *thread;
-    bool touched_by_hand;
-    void* kvaddr;
+    struct spage_table_entry *spte; /* spte of user virtual address which the frame corresponds to currently */
+    struct list_elem elem;          /* list element to add to frame_table list */
+    struct thread *thread;          /* thread of user virtual address which the frame corresponds to currently */
+    void* kvaddr;                   /* kernel virtual address of this frame */
   };
 
 void frame_table_init(void);

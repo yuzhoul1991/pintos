@@ -248,6 +248,7 @@ process_update_exit_status(int status)
   cur->exit_status = status;
 }
 
+/* Close unclosed file's of this process */
 static void
 process_free_file_descriptors(void)
 {
@@ -266,6 +267,7 @@ process_free_file_descriptors(void)
   }
 }
 
+/* Free up code segment user vaddr */
 static void
 process_free_code_segment(void)
 {
@@ -280,6 +282,7 @@ process_free_code_segment(void)
     page_free_vaddr(vaddr);
 }
 
+/* Free up data segment user vaddr */
 static void
 process_free_data_segment(void)
 {
@@ -294,6 +297,7 @@ process_free_data_segment(void)
     page_free_vaddr(vaddr);
 }
 
+/* Free up stack segment user vaddr */
 static void
 process_free_stack_segment(void)
 {
@@ -307,6 +311,7 @@ process_free_stack_segment(void)
     page_free_vaddr(vaddr);
 }
 
+/* Free up unmapped mmap's of this process */
 static void
 process_free_mmaps(void)
 {
@@ -341,6 +346,7 @@ process_release_exit_semaphore(void)
   intr_set_level (old_level);
 }
 
+/* Free up hash table corresponding to spte table */
 static void
 process_free_spage_table(void)
 {
@@ -721,6 +727,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
   struct thread *t = thread_current ();
 
+  /* Update data and code segment's start and end user vaddr */
   if(writable)
   {
     t->data_seg_start = (void *) upage;

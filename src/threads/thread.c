@@ -529,6 +529,7 @@ next_thread_to_run (void)
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
+/* Returns list_elem corresponding to fd from fd_list */
 struct list_elem *
 thread_find_fd(struct thread *t, int fd)
 {
@@ -555,6 +556,7 @@ thread_find_fd(struct thread *t, int fd)
     return NULL;
 }
 
+/* Returns list_elem corresponding to mapid from mmap_list */
 struct list_elem *
 thread_find_mmap(struct thread *t, mapid_t mapid)
 {
@@ -668,6 +670,7 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
+/* munmap a m_info by freeing up user vaddr's in mmap range */
 void
 thread_munmap(struct mmap_info *m_info)
 {

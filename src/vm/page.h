@@ -18,17 +18,17 @@
 
 struct spage_table_entry
   {
-    struct file *file;
-    uint32_t read_bytes;
-    uint32_t zero_bytes;
-    off_t offset;
+    struct file *file;      /* File pointer to spte associated with a file */
+    uint32_t read_bytes;    /* Number of actual bytes to read from file for spte associated with a file */
+    uint32_t zero_bytes;    /* Number of zero bytes to fill page for spte associated with a file */
+    off_t offset;           /* Offset from file for spte associated with a file */
     uint8_t type;           /* type can be modified by other threads during eviction. Read or write of this should have pinned=true */
-    uint32_t swap_idx;
-    void* uvaddr;
-    bool writable;
-    bool pinned;
-    struct lock entry_lock;
-    struct hash_elem elem;
+    uint32_t swap_idx;      /* swap index which corresponds to swap sector for spte associated with swap */
+    void* uvaddr;           /* user virtual address corresponding to this spte */
+    bool writable;          /* Indicates if user page is writable or not */
+    bool pinned;            /* Indicates if the user page is pinned or not */
+    struct lock entry_lock; /* lock corresponding to this spte */
+    struct hash_elem elem;  /* hash elem to add to spte hash */
   };
 
 void page_init(struct thread* t);

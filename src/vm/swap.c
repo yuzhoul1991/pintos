@@ -6,6 +6,7 @@
 #include "userprog/pagedir.h"
 
 
+/* Initialize swap_bock, bitmap and swap_lock */
 void
 swap_init (void)
 {
@@ -15,6 +16,7 @@ swap_init (void)
   lock_init(&swap_lock);
 }
 
+/* Release bitmap idx which corresponds to a swap sector */
 void
 swap_release_idx (uint32_t idx)
 {
@@ -23,6 +25,7 @@ swap_release_idx (uint32_t idx)
   lock_release(&swap_lock);
 }
 
+/* Read from bitmap idx which corresponds to a swap sector into kpage */
 void 
 swap_read_idx (uint32_t idx, void *kpage)
 {
@@ -39,6 +42,7 @@ swap_read_idx (uint32_t idx, void *kpage)
 
 }
 
+/* Read from kpage into bitmap idx which corresponds to a swap sector */
 void 
 swap_write_idx (uint32_t idx, void *kpage)
 {
@@ -55,6 +59,7 @@ swap_write_idx (uint32_t idx, void *kpage)
 
 }
 
+/* Get a free bitmap idx which corresponds to a swap sector */
 size_t
 swap_get_idx (void)
 {

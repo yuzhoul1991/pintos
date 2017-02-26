@@ -51,6 +51,7 @@ page_free(struct thread *t)
   hash_destroy(&t->spage_table, spage_free_hash_action_func);
 }
 
+/* Grow the stack to user vaddr */
 bool
 grow_stack(void* uvaddr)
 {
@@ -110,6 +111,7 @@ grow_stack(void* uvaddr)
   return true;
 }
 
+/* Get the spte corresponding to a user vaddr */
 struct spage_table_entry*
 page_get_spte(void* fault_addr)
 {
@@ -122,6 +124,7 @@ page_get_spte(void* fault_addr)
   return hash_entry (e, struct spage_table_entry, elem);
 }
 
+/* Create spte entries corresponding to upage. Associate it with a file and store read_bytes, zero_bytes */
 bool
 page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
                    uint32_t zero_bytes, bool writable, bool mmaped)
@@ -150,6 +153,7 @@ page_add_file(uint8_t *upage, struct file *file, off_t ofs, uint32_t read_bytes,
   return true;
 }
 
+/* For a page faulting stack user vaddr: Get a frame, fill it with 0s and map it to page table */
 bool
 page_load_for_stack(struct spage_table_entry *spte)
 {
@@ -178,6 +182,7 @@ page_load_for_stack(struct spage_table_entry *spte)
   return true;
 }
 
+/* For a page faulting user vaddr with data in file: Get a frame, fill it with reads from file and map it to page table */
 bool
 page_load_from_file(struct spage_table_entry *spte)
 {
@@ -225,6 +230,7 @@ page_load_from_file(struct spage_table_entry *spte)
   return true;
 }
 
+/* For a page faulting user vaddr with data in swap: Get a frame, fill it with reads from swap, free swap slot and map it to page table */
 bool
 page_load_from_swap(struct spage_table_entry *spte)
 {
@@ -250,6 +256,7 @@ page_load_from_swap(struct spage_table_entry *spte)
   return true;
 }
 
+/* Pin a user vaddr */
 void
 page_pin(struct spage_table_entry *spte)
 {
@@ -258,6 +265,7 @@ page_pin(struct spage_table_entry *spte)
   lock_release(&spte->entry_lock);
 }
 
+/* UnPin a user vaddr */
 void
 page_unpin(struct spage_table_entry *spte)
 {
@@ -266,6 +274,7 @@ page_unpin(struct spage_table_entry *spte)
   lock_release(&spte->entry_lock);
 }
 
+/* Get pinned of a user vaddr */
 bool
 page_get_pinned(struct spage_table_entry *spte)
 {
@@ -276,6 +285,7 @@ page_get_pinned(struct spage_table_entry *spte)
   return pin;
 }
 
+/* Free a user vaddr */
 void
 page_free_vaddr(void *vaddr)
 {
@@ -286,6 +296,7 @@ page_free_vaddr(void *vaddr)
 
     page_pin(spte);
 
+    /* If user vaddr is in page_table and dirty. Store in file for mmaped vaddr. */
     if(pagedir_get_page (t->pagedir, vaddr) != NULL)
     {
       //When freeing vaddr, Only MMAP has to writeback to file
