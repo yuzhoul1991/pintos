@@ -40,6 +40,29 @@ syscall_check_valid_user_pointer(void* ptr, bool is_write, bool check_spte)
         {
           valid &= spte->writable;
         }
+        if (valid && spte && (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL))
+        {
+          bool success = false;
+          page_pin(spte);
+          switch(spte->type)
+          {
+            case(SPTE_FILE):
+            case(SPTE_MMAP):
+              success = page_load_from_file(spte);
+              break;
+            case(SPTE_SWAP):
+              success = page_load_from_swap(spte);
+              break;
+            case(SPTE_ZERO):
+              success = page_load_for_stack(spte);
+              break;
+            default:
+              PANIC ("You shouldn't page fault in the first place!");
+              break;
+          }
+          page_unpin(spte);
+          valid &= success;
+        }
     }
 
   if (!valid)
