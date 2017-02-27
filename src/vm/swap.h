@@ -6,10 +6,10 @@
 #include "threads/palloc.h"
 #include "devices/block.h"
 
-struct block *swap_block;
-struct bitmap *swap_bitmap;
-uint32_t bitmap_to_sector;
-struct lock swap_lock;
+struct block *swap_block;    /* Pointer to struct block representing swap space */
+struct bitmap *swap_bitmap;  /* Bitmap which holds bits = block_size (swap_block)/bitmap_to_sector, where bitmap_to_sector=PGSIZE/BLOCK_SECTOR_SIZE */
+uint32_t bitmap_to_sector;   /* This gives number of swap index needed to make a page */
+struct lock swap_lock;       /* Lock when using swap_block */
 
 void swap_init(void);
 void swap_release_idx(uint32_t idx);

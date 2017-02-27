@@ -177,8 +177,8 @@ frame_free_page(struct spage_table_entry *spte)
   }
 
   /* If clock_hand == the element to remove 
-     [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F2]
-     [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F2] ---(wrap around)---> clock_hand = [F0]
+     [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F0]
+     [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F0] ---(wrap around)---> clock_hand = [F2]
   */
   if(clock_hand == &to_free->elem)
   {
@@ -186,10 +186,10 @@ frame_free_page(struct spage_table_entry *spte)
       clock_hand = NULL;
     else
     {
-      if(list_next(clock_hand) == list_tail(&frame_table))
-        clock_hand = list_begin (&frame_table);
+      if(clock_hand == list_begin(&frame_table))
+        clock_hand = list_prev (list_end (&frame_table));
       else
-        clock_hand = list_next (&to_free->elem);
+        clock_hand = list_prev (&to_free->elem);
     }
   }
 

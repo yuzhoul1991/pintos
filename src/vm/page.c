@@ -36,6 +36,8 @@ static void
 spage_free_hash_action_func (struct hash_elem *e, void *aux UNUSED)
 {
   struct spage_table_entry *spte = hash_entry (e, struct spage_table_entry, elem);
+  struct thread *t = thread_current ();
+  hash_delete (&t->spage_table, &spte->elem);
   free (spte);
 }
 
