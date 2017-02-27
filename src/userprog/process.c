@@ -419,9 +419,7 @@ process_print_exit_msg(void)
 void
 process_exit (void)
 {
-  process_print_exit_msg ();
   process_free_file_descriptors ();
-  process_release_exit_semaphore ();
   process_free_code_segment ();
   process_free_data_segment ();
   process_free_stack_segment ();
@@ -430,6 +428,8 @@ process_exit (void)
   process_destroy_pagedir ();
   process_close_executable_file ();
   process_free_child_list ();
+  process_print_exit_msg ();
+  process_release_exit_semaphore ();
 }
 
 /* Sets up the CPU for running user code in the current
