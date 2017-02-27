@@ -175,6 +175,25 @@ After we come out of the syscall functions, we unpin the user vaddrs.
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
 
+The three high level locks in VM systems are frame_table lock, swap_lock and supplementry page table entry lock.
+They are for the entrire frame_table, swap space and per supplementry page table entry respectively. 
+
+The reason for choosing a single frame_table lock than going for lock every frame_table
+entry is because our frame_table structure has a list and clock_hand pointer which are common
+to all processes. So multiple locks for frame_table will be complicated.
+
+Also introducing a swap_lock helps us parallelise read from swap_slot and frame allocation/eviction process.
+So when a frame is reading from swap slot another page_fault could be serviced(As mentioned above the frame can't
+be evicetd because of pinning).
+
+Supplementry page table entry has variables named pinned, page type(whether it from file/swap) etc.
+Lets take a process P which has a supplementry page table entry for a user vaddr. The above variables of the supplementry
+page table entry can be updated by process P and it can be read by other Processes during eviction(We need to know if a frame
+is pinned or not). By creating separate locks per entry, reading and writing of different entries are parallel.
+
+By these 3 high level locks we create parallelism but we don't overdo it and complicate our design.
+
+
 			 MEMORY MAPPED FILES
 			 ===================
 
