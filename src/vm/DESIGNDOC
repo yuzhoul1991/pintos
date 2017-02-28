@@ -203,14 +203,43 @@ By these 3 high level locks we create parallelism but we don't overdo it and com
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* Struct which stores relevant mmap info */
+struct mmap_info
+  {
+    mapid_t mapid;               /* mapid of the mmap */
+    struct file *file_ptr;       /* pointer to the file mmaped */
+    void* vaddr_start;           /* Start virtual address of mmap */
+    void* vaddr_end;             /* End virtual address of mmap */
+    size_t mmap_size;            /* size of file mmaped */
+    struct list_elem mmap_elem;  /* List element for mmap_list list. */
+
+  };
+
+Following members are added to thread struct
+int total_mmaps;                      /* Total mmaps opened by current process */
+struct list mmap_list;                /* List of opened mmaps */
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+file pointer is retrieved from the file descriptor passed as argument to
+mmap syscall then file pointer,vaddr,read_bytes,zero_bytes,writable and type are passed
+as arguments to page_add_file function.When page fault occurs page table entry is passed
+as argument to frame_get_page function.frame_get_page function calls palloc_get_page and
+get a page in user memory but if null pointer is returned by palloc_get_page then 
+frame_get_page function calls frame_eviction function.If the evicted frame is 
+mmaped then mmaped file content is written back to the file then that particular 
+frame is evicted.
+ 
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
+we haven't impemented sharing for mmap files,we don't check any file mappings
+with any existing segment
 
 ---- RATIONALE ----
 
@@ -220,6 +249,9 @@ By these 3 high level locks we create parallelism but we don't overdo it and com
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+we haven't impemented sharing for mmap files,we don't check any file mappings
+with any existing segment
 
 			   SURVEY QUESTIONS
 			   ================
