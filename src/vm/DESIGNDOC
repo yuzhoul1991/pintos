@@ -310,14 +310,49 @@ By these 3 high level locks we create parallelism but we don't overdo it and com
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* Struct which stores relevant mmap info */
+struct mmap_info
+  {
+    mapid_t mapid;               /* mapid of the mmap */
+    struct file *file_ptr;       /* pointer to the file mmaped */
+    void* vaddr_start;           /* Start virtual address of mmap */
+    void* vaddr_end;             /* End virtual address of mmap */
+    size_t mmap_size;            /* size of file mmaped */
+    struct list_elem mmap_elem;  /* List element for mmap_list list. */
+
+  };
+
+Following members are added to thread struct
+int total_mmaps;                      /* Total mmaps opened by current process */
+struct list mmap_list;                /* List of opened mmaps */
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
 
+Whenever syscall to mmap a file is called, after checks to validate the address range, we create a mmap_info object
+and add it to the thread's mmap_list. The mmap_info created is updated with file_pointer(obtained from file_reopen),
+user virtual address start and end and file_size. And for each page in the mmap range, we create a supplementry page
+table entry. We update the supplementry page_table entry(spte) with file_ptr, offset, bytes to read and mark it as MMAP type.
+
+For page_faults on mmaped page(spte corresponding to the vaddr will indicate that it is a mmaped page), 
+we always get data from the mapped file at particular offset. But for other type of pages, the data could be either be from
+file or from swap slot. mmaped page never gets data from swap slot.
+
+While evicting mmaped page, if the page is dirty, we write back to the file it maps at particular offset but other pages 
+write to swap slot and need to keep track of swap slot.
+
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
+
+During load_segement() in start_process(), we store code segment's start and end virtual addresses. 
+Similarly we store the data segment's start and end virtual addresses. These are stored as part of struct thread 
+corresponding to the process. We similary store stack's address which gets updated whenver we grow stack.
+
+When we try to map a new file we make sure that the user virtual address range(obtained from the start virtual address provided 
+to syscall and size of file to map) is not overlapping with any of the segments which are available in struct thread.
 
 ---- RATIONALE ----
 
@@ -327,6 +362,24 @@ By these 3 high level locks we create parallelism but we don't overdo it and com
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
+
+Our implementation shares the code for data demand-paged from executable and "mmap" mappings
+with few differences.
+
+Similarity:
+- Both the types of pages store the file pointer, offset, bytes to read.
+- Page fault on both pages are treated similarly with same code. Unless the demand-paged from executable was to a R/W segment 
+  and it was already evicted to swap slot.
+  We shared code in case mentioned above because both page faults can be serviced by read from a file from a particular 
+  offset which is stored in both the type of pages.
+
+Differences:
+- During eviction, dirty pages from executable are stored in swap while dirty mmaped pages write back to the file.
+  We did not want to evict mmaped pages to swap and write back to file at the end as we did not want to waste a swap slot.
+  Also any processes sharing the file will get a chance to look at updated values.
+- During process exit, dirty pages from executable are NOT stored anywhere while dirty mmaped pages write back to the file.
+  Dirty pages from executable have changes which lose their scope at the end of process execution. So they need not be backed 
+  up anywhere. But mmaped pages have to write back to the file as the file's scope continues.
 
 			   SURVEY QUESTIONS
 			   ================
