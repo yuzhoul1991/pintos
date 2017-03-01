@@ -30,24 +30,111 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+The following members are added to the struc thread:
+
+uint32_t *pagedir;                    /* Page directory. */
+void* code_seg_start;                 /* Start vaddr of code_segment*/
+void* code_seg_end;                   /* End vaddr of code_segment*/
+void* data_seg_start;                 /* Start vaddr of data_segment*/
+void* data_seg_end;                   /* End vaddr of data_segment*/
+void* stack_start;                    /* Start vaddr of stack_segment*/
+void* stack_end;                      /* End vaddr of stack_segment*/
+int total_mmaps;                      /* Total mmaps opened by current process */
+struct list mmap_list;                /* List of opened mmaps */
+struct hash spage_table;              /* Per process suplimental page table */
+
+
+A new header file page.h is added and contains the following new struct:
+
+struct spage_table_entry
+  {
+    struct file *file;      /* File pointer to spte associated with a file */
+    uint32_t read_bytes;    /* Number of actual bytes to read from file for spte associated with a file */
+    uint32_t zero_bytes;    /* Number of zero bytes to fill page for spte associated with a file */
+    off_t offset;           /* Offset from file for spte associated with a file */
+    uint8_t type;           /* type can be modified by other threads during eviction. Read or write of this should have pinned=true */
+    uint32_t swap_idx;      /* swap index which corresponds to swap sector for spte associated with swap */
+    void* uvaddr;           /* user virtual address corresponding to this spte */
+    bool writable;          /* Indicates if user page is writable or not */
+    bool pinned;            /* Indicates if the user page is pinned or not */
+    struct lock entry_lock; /* lock corresponding to this spte */
+    struct hash_elem elem;  /* hash elem to add to spte hash */
+  };
+
+The above struct describes an entry in supplementary page table which is a hash in the thread struct.
+
+A new header file frame.h is added and contains the following new struct definitions:
+
+
+struct list frame_table;       /* Frame table which is a list of frames in use */
+struct list_elem *clock_hand;  /* Clock hand which points to an element in frame_table list */
+
+struct frame_table_entry
+  {
+    struct spage_table_entry *spte; /* spte of user virtual address which the frame corresponds to currently */
+    struct list_elem elem;          /* list element to add to frame_table list */
+    struct thread *thread;          /* thread of user virtual address which the frame corresponds to currently */
+    void* kvaddr;                   /* kernel virtual address of this frame */
+  };
+
+The data structures in frame.h is for the frame table.
+
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for locating the frame,
 >> if any, that contains the data of a given page.
 
+With a given page, the supplementary page table entry is first located using the following function defined
+in page.h:
+
+struct spage_table_entry*
+page_get_spte(void* fault_addr)
+
+The function takes in a virtual address and it is rounded down to the page starting address. The starting
+virtual address of the page is used as the key of the supplementary page table in the thread struct to
+locate the supplementary page table entry (spte).
+
+The pointer to the spte is then passed to the following function defined in frame.h:
+
+void *
+frame_get_kpage(struct spage_table_entry *spte)
+
+The frame table is a list of frame_table_entry. In the frame_table_entry struct there is a pointer to
+the spte the physical page is for. The above function thus take the spte passed in and walk through the
+frame table to find the frame_table_entry that correspond to the spte.
+
+The frame_table_entry contains the kernel virtual address of this frame, which is returned by the function.
+
+
 >> A3: How does your code coordinate accessed and dirty bits between
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
+
+We were able to avoid this problem entirely by only accessing the frame using user virtual address instead
+of kernel virtual address.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
+The frame table has a global lock that needs to be required when the frame_table list is
+being accessed.
+
 ---- RATIONALE ----
 
 >> A5: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+
+We used a hash as the supplementary page table per thread struct. The reason we use a hash
+is because each hash_entry in that hash represents a virtual page. Naturally the user virtual
+address can be used as the key to the hash as they are unique within the user process. This
+provides fast access from the hash as looking up spte in the table is a frequently accuring action.
+
+We used a list to represent frame table. The frame table entry is a list element that represents
+a physical page. The frame table is a small subset of the virtual memory space so using a list
+avoided some of the overhead in the hash implementation.
 
 		       PAGING TO AND FROM DISK
 		       =======================
@@ -59,7 +146,7 @@ FirstName LastName <email@domain.example>
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
 struct block *swap_block;    /* Pointer to struct block representing swap space */
-struct bitmap *swap_bitmap;  /* Bitmap which holds bits = block_size (swap_block)/bitmap_to_sector, 
+struct bitmap *swap_bitmap;  /* Bitmap which holds bits = block_size (swap_block)/bitmap_to_sector,
                                 where bitmap_to_sector=PGSIZE/BLOCK_SECTOR_SIZE */
 uint32_t bitmap_to_sector;   /* This gives number of swap index needed to make a page */
 struct lock swap_lock;       /* Lock when using swap_block */
@@ -74,31 +161,51 @@ we call palloc_get_page(PAL_USER) and add it to frame_table. Only when palloc fa
 
 We maintain a clock_hand pointer which points to an element in frame_table. On initialization, clock_hand is NULL.
 Everytime we insert a frame from palloc, we insert it next to current clock_hand and move the clock_hand to point to inserted element.
-Eg: Trying to insert [F1] to [H]->[F0]->[T], clock_hand = [F0] 
-    After insertion:         [H]->[F0]->[F1]->[T], clock_hand = [F1] 
+Eg: Trying to insert [F1] to [H]->[F0]->[T], clock_hand = [F0]
+    After insertion:         [H]->[F0]->[F1]->[T], clock_hand = [F1]
 
 When we release a user virtual address and if a frame is servicing it, we return the frame to user_pool.
 If clock_hand points to the frame to remove, move clock_hand to previous element/frame.
-Eg:  If clock_hand == the element to remove 
+Eg:  If clock_hand == the element to remove
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F0]
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F0] ---(wrap around)---> clock_hand = [F2]
-  
+
 Coming to the actual frame choosen during eviction, we start from element to next of clock_hand(From the insertion example above, we
 would start from [F0] thus implementing LRU) and go through the list in forward direction similar to "clocking".
-If we find a frame which was accessed, we mark it as unaccessed for potentially picking it during 2nd run. If we find a 
-unaccessed and unpinned frame, we pick it for eviction. Picked frame, if dirty, will write to swap slot or file. 
+If we find a frame which was accessed, we mark it as unaccessed for potentially picking it during 2nd run. If we find a
+unaccessed and unpinned frame, we pick it for eviction. Picked frame, if dirty, will write to swap slot or file.
 
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
-When we choose a frame to evict, the frame table entry has pointer to supplementry page_table entry and thread pointer of user virtual address associated with Q. 
-We use pagedir_clear_page() to clear Q's user vaddr from page tables. Then we update the frame table entry to point to spte of P's user vaddr and update the thread pointer to that of P. By doing this, we have no frames associated with Q's evicted user vaddr and access to Q's evicted user vaddr would cause a page fault.   
+When we choose a frame to evict, the frame table entry has pointer to supplementry page_table entry and thread pointer of user virtual address associated with Q.
+We use pagedir_clear_page() to clear Q's user vaddr from page tables. Then we update the frame table entry to point to spte of P's user vaddr and update the thread pointer to that of P. By doing this, we have no frames associated with Q's evicted user vaddr and access to Q's evicted user vaddr would cause a page fault.
 
 
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+When a page fault happens, we first attempt to look up in the supplementary page table and try to find
+the supplementary page table entry (spte) that corresponds to this faulting virtual address.
+The other part of the design guarantees that a spte exists in the supplementary page table if the faulting
+access is either of the following cases:
+
+1. spte was setup for lazy loading from file.
+2. spte was setup for lazy loading from mmap file.
+3. The physical page is located on Swap space.
+4. spte was setup when previously faulted and grow_stack function was called.
+
+Note in case 4, grow_stack only setups physical page for the page that corresponds to the faulting virtual
+address, all other pages between the faulting virtual address and previous stack_start we only setup the spte
+to enable lazy loading when next time it faults on a virtual address within those pages.
+
+If the above steps failed to locate the spte, that means it is either invalid address or it is PUSH or PUSHA.
+
+The grow_stack function is only called when the faulting address is valid user virtual address, and the
+fault address is within the limit below the stack pointer as specified by the project document.
+
 
 ---- SYNCHRONIZATION ----
 
@@ -113,8 +220,8 @@ Synchronization is done with the following locks.
 [3] Swap lock.(Coarse lock).
 [4] File lock.(Coarse lock).
 
-We prevent deadlock by ordering lock resources. 
-[1] When a thread has to obtain multiple locks, 
+We prevent deadlock by ordering lock resources.
+[1] When a thread has to obtain multiple locks,
      - frame_table lock would be the first acquired.
      - supplemetry table entry lock would be the next to be acquired.
      - filesys_lock and swap_lock cannot be held at the same time and they are the last to be acquired.
@@ -126,10 +233,10 @@ This ordering of locks prevents deadlock.
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
 
-For any access/update to frame_table or for calling palloc_get_page(PAL_USER) on a page_fault, frame_table lock has to be obtained. 
+For any access/update to frame_table or for calling palloc_get_page(PAL_USER) on a page_fault, frame_table lock has to be obtained.
 So when P is in the process of eviting Q's frame, it would be holding the frame_table lock.
 When the eviction logic picks Q's frame, it would first clear the page table entry corresponding to Q's user vaddr.
-So if Q tries access or modify the page, it would page_fault. When Q page_faults it would try to acquire frame_table lock first. 
+So if Q tries access or modify the page, it would page_fault. When Q page_faults it would try to acquire frame_table lock first.
 But the lock cannot be obtained till P's page fault is serviced completly. So when Q faults the page back in,
 P would have gotten its page fault serviced completly thus preventing races.
 
@@ -140,7 +247,7 @@ P would have gotten its page fault serviced completly thus preventing races.
 
 Whenever Process P's user vaddr page faults, we first pin the user vaddr. The pinned/unpinned information is
 stored in supplementry page table. The user vaddr is unpinned only after it gets a frame and required data is
-read from file/swap or zeroed. So second process Q cannot interfere because whenever it tries to evict the frame which  
+read from file/swap or zeroed. So second process Q cannot interfere because whenever it tries to evict the frame which
 was assigned to P, it would read from spte(frame has pointer to spte it is currently assigned to) that the user vaddr
  is pinned. So the frame cannot be evicted.
 
@@ -157,9 +264,9 @@ In the syscalls we implement, the user vaddr of concern are the following
 
 We dont want them to page_fault inside filesys operations because the thread would acquire filesys_lock and
 pagefault inside would cause deadlock because page_fault logic could cause read/write to file which needs the lock
-aswel and cause deadlock. 
+aswel and cause deadlock.
 
-To avoid this, inside syscall_handler(), right before calling the separate syscalls mentioned above, 
+To avoid this, inside syscall_handler(), right before calling the separate syscalls mentioned above,
 [1] We pin the user vaddr mentioned above.
 [2] If the user vaddrs have no page table entry, gracefully allocate frames to these user pages and create an entry in page table.
 By pinning the user vaddr, we prevent the pages form getting evicted from the time we brought the frame and
@@ -176,7 +283,7 @@ After we come out of the syscall functions, we unpin the user vaddrs.
 >> design it this way.
 
 The three high level locks in VM systems are frame_table lock, swap_lock and supplementry page table entry lock.
-They are for the entrire frame_table, swap space and per supplementry page table entry respectively. 
+They are for the entrire frame_table, swap space and per supplementry page table entry respectively.
 
 The reason for choosing a single frame_table lock than going for lock every frame_table
 entry is because our frame_table structure has a list and clock_hand pointer which are common
