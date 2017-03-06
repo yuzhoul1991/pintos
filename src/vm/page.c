@@ -212,7 +212,7 @@ page_load_from_file(struct spage_table_entry *spte)
       filesys_unlock ();
       /* Load this page. */
       filesys_lock ();
-      off_t bytes_read = file_read (spte->file, kpage, page_read_bytes);
+      off_t bytes_read = file_read (spte->file, kpage, page_read_bytes, false);
       filesys_unlock ();
       if (bytes_read != (int) page_read_bytes)
         {
@@ -313,7 +313,7 @@ page_free_vaddr(void *vaddr)
           /* Write mmaped file. */
           uint8_t *kpage = frame_get_kpage(spte);
           filesys_lock ();
-          file_write (spte->file, kpage, PGSIZE);
+          file_write (spte->file, kpage, PGSIZE, false);
           filesys_unlock ();
         }
 

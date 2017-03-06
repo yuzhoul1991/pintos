@@ -293,7 +293,7 @@ syscall_read (int fd, void *buffer, unsigned size)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
     filesys_lock ();
-    int actual_read = file_read(f_info->file_ptr, buffer, size);
+    int actual_read = file_read(f_info->file_ptr, buffer, size, false);
     filesys_unlock ();
     return actual_read;
   }
@@ -319,7 +319,7 @@ syscall_write (int fd, const void *buffer, unsigned size)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
     filesys_lock ();
-    int actual_write = file_write(f_info->file_ptr, buffer, size);
+    int actual_write = file_write(f_info->file_ptr, buffer, size, false);
     filesys_unlock ();
     return actual_write;
   }

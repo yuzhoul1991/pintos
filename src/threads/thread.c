@@ -12,9 +12,11 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #include "vm/page.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/cache.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -66,6 +68,7 @@ bool thread_mlfqs;
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
+static void filesys_helper (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
 static void init_thread (struct thread *, const char *name, int priority);
@@ -119,6 +122,9 @@ thread_start (void)
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
+#ifdef FILESYS
+  thread_create ("filesys_helper", PRI_MIN, filesys_helper, NULL);
+#endif
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -683,4 +689,15 @@ thread_munmap(struct mmap_info *m_info)
   filesys_lock ();
   file_close(m_info->file_ptr);
   filesys_unlock ();
+}
+
+static void
+filesys_helper (void *aux UNUSED)
+{
+  while (1)
+    {
+      timer_sleep (FILESYS_HELPER_TICKS);
+      cache_write_behind ();
+      cache_read_ahead ();
+    }
 }

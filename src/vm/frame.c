@@ -85,7 +85,7 @@ frame_eviction(void)
           filesys_unlock ();
           /* Write mmaped file. */
           filesys_lock ();
-          off_t bytes_write = file_write (evicted_frame->spte->file, evicted_frame->kvaddr, PGSIZE);
+          off_t bytes_write = file_write (evicted_frame->spte->file, evicted_frame->kvaddr, PGSIZE, false);
           filesys_unlock ();
           if (bytes_write != PGSIZE)
             PANIC ("page_free_vaddr: Not writing PGSIZE dirty bytes to file");
