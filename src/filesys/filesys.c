@@ -38,6 +38,7 @@ filesys_init (bool format)
   if (fs_device == NULL)
     PANIC ("No file system device found, can't initialize file system.");
 
+  cache_init ();
   inode_init ();
   free_map_init ();
 
@@ -45,7 +46,6 @@ filesys_init (bool format)
     do_format ();
 
   free_map_open ();
-  cache_init ();
 }
 
 /* initializes filesys_lock */
