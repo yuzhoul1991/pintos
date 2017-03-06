@@ -20,13 +20,13 @@ static void do_format (void);
 void
 filesys_lock (void)
 {
-  lock_acquire (&lock);
+  //lock_acquire (&lock);
 }
 
 void
 filesys_unlock (void)
 {
-  lock_release (&lock);
+  //lock_release (&lock);
 }
 
 /* Initializes the file system module.
