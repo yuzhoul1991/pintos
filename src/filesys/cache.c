@@ -343,7 +343,8 @@ cache_read_write (uint32_t read_write, block_sector_t sector, block_sector_t pre
     {
       memcpy (buffer + bytes_read, c_entry->data + sector_ofs, chunk_size);
       lock_acquire (&cache_read_ahead_lock);
-      if(list_size (&cache_read_ahead_list) != READ_AHEAD_ENTRIES)
+      if((list_size (&cache_read_ahead_list) != READ_AHEAD_ENTRIES) &&
+          prefetch_sector < block_size (fs_device))
         {
           struct cache_read_ahead_entry *r_entry = malloc(sizeof(struct cache_read_ahead_entry));
           if (r_entry == NULL)
