@@ -1,4 +1,5 @@
 #include <debug.h>
+#include <stdio.h>
 #include "vm/frame.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"

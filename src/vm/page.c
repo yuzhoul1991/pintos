@@ -99,6 +99,7 @@ grow_stack(void* uvaddr)
           // Successfully got a physical page install the page
           if (!install_page(new_spte->uvaddr, kpage, true))
             {
+              frame_free_page(new_spte);
               free (new_spte);
               return false;
             }
@@ -173,6 +174,7 @@ page_load_for_stack(struct spage_table_entry *spte)
 
   if (!install_page(spte->uvaddr, kpage, true))
     {
+      frame_free_page(spte);
       hash_delete (&t_current->spage_table, &spte->elem);
       free (spte);
       return false;
