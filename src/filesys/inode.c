@@ -222,30 +222,30 @@ inode_grow_one_sector (struct inode_disk *inode_disk)
   inode_disk->length = new_length;
 
   // Extend by allocating a new dicrect_block
-  if (new_length < DIRECT_CAP)
+  if (new_length <= DIRECT_CAP)
     {
-      off_t direct_block_idx = get_direct_block_index (new_length);
+      off_t direct_block_idx = get_direct_block_index (new_length - 1);
       inode_disk->direct_blocks[direct_block_idx] = inode_create_new_block(0);
       return ((int)inode_disk->direct_blocks[direct_block_idx] != -1);
     }
   // Extend by adding to indirect_block
-  else if (new_length < INDIRECT_CAP)
+  else if (new_length <= INDIRECT_CAP)
     {
       if ((int)inode_disk->indirect_block == -1)
         inode_disk->indirect_block = inode_create_new_block(-1);
 
-      off_t indirect_block_idx = get_indirect_block_index (new_length);
+      off_t indirect_block_idx = get_indirect_block_index (new_length - 1);
       if (inode_extend_indirect_block (inode_disk->indirect_block, indirect_block_idx))
         return true;
     }
   // Extend by adding to dbl_indirect_block
-  else if (new_length < DBL_INDIRECT_CAP)
+  else if (new_length <= DBL_INDIRECT_CAP)
     {
       if ((int)inode_disk->dbl_indirect_block == -1)
         inode_disk->dbl_indirect_block = inode_create_new_block(-1);
 
-      off_t l1_idx = get_dbl_indirect_block_index_l1 (new_length);
-      off_t l2_idx = get_dbl_indirect_block_index_l2 (new_length);
+      off_t l1_idx = get_dbl_indirect_block_index_l1 (new_length - 1);
+      off_t l2_idx = get_dbl_indirect_block_index_l2 (new_length - 1);
       if (inode_extend_dbl_indirect_block (inode_disk->dbl_indirect_block, l1_idx, l2_idx))
         return true;
     }
