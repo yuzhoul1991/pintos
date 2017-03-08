@@ -291,7 +291,7 @@ page_get_pinned(struct spage_table_entry *spte)
 
 /* Free a user vaddr */
 void
-page_free_vaddr(void *vaddr)
+page_free_vaddr(void *vaddr, size_t write_bytes UNUSED)
 {
   struct spage_table_entry *spte = page_get_spte(vaddr);
   if(spte)
@@ -315,7 +315,7 @@ page_free_vaddr(void *vaddr)
           /* Write mmaped file. */
           uint8_t *kpage = frame_get_kpage(spte);
           filesys_lock ();
-          file_write (spte->file, kpage, PGSIZE, false);
+          file_write (spte->file, kpage, write_bytes, false);
           filesys_unlock ();
         }
 

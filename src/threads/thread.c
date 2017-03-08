@@ -683,8 +683,13 @@ thread_munmap(struct mmap_info *m_info)
   void* start_vaddr = m_info->vaddr_start;
   void* end_vaddr   = m_info->vaddr_end;
   void* vaddr;
-  for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
-    page_free_vaddr(vaddr);
+  size_t size = m_info->mmap_size;
+  for(vaddr = start_vaddr; (vaddr<end_vaddr) && (size>0); vaddr+=PGSIZE)
+    {
+      size_t mmap_write_bytes = size < PGSIZE ? size : PGSIZE;
+      page_free_vaddr(vaddr, mmap_write_bytes);
+      size-=PGSIZE;
+    }
 
   filesys_lock ();
   file_close(m_info->file_ptr);

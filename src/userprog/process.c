@@ -279,7 +279,7 @@ process_free_code_segment(void)
   void* end_vaddr   = cur->code_seg_end;
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
-    page_free_vaddr(vaddr);
+    page_free_vaddr(vaddr, FREE_UVADDR_WRITE_ZERO);
 }
 
 /* Free up data segment user vaddr */
@@ -294,7 +294,7 @@ process_free_data_segment(void)
   void* end_vaddr   = cur->data_seg_end;
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
-    page_free_vaddr(vaddr);
+    page_free_vaddr(vaddr, FREE_UVADDR_WRITE_ZERO);
 }
 
 /* Free up stack segment user vaddr */
@@ -308,7 +308,7 @@ process_free_stack_segment(void)
   void* end_vaddr   = cur->stack_end;
   void* vaddr;
   for(vaddr = start_vaddr; vaddr<end_vaddr; vaddr+=PGSIZE)
-    page_free_vaddr(vaddr);
+    page_free_vaddr(vaddr, FREE_UVADDR_WRITE_ZERO);
 }
 
 /* Free up unmapped mmap's of this process */

@@ -16,6 +16,8 @@
 #define SPTE_MMAP 0x4
 #define SPTE_ZERO 0x8
 
+#define FREE_UVADDR_WRITE_ZERO 0
+
 struct spage_table_entry
   {
     struct file *file;      /* File pointer to spte associated with a file */
@@ -49,6 +51,6 @@ bool page_load_for_stack(struct spage_table_entry *spte);
 void page_pin(struct spage_table_entry *spte);
 void page_unpin(struct spage_table_entry *spte);
 bool page_get_pinned(struct spage_table_entry *spte);
-void page_free_vaddr(void *vaddr);
+void page_free_vaddr(void *vaddr, size_t write_bytes);
 
 #endif
