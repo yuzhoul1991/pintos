@@ -381,7 +381,7 @@ inode_create (block_sector_t sector, off_t length)
           inode_disk->direct_blocks[i] = -1;
         }
 
-      if (!inode_grow(inode_disk, length))
+      if ((length != 0) && !inode_grow(inode_disk, length))
         {
           free (inode_disk);
           return false;
@@ -551,6 +551,14 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
+  // read latest disk inode to memory
+  block_read (fs_device, inode->sector, &inode->data);
+
+  off_t new_length = size + offset;
+  if (new_length > inode_length (inode))
+    if (!inode_grow (&inode->data, new_length))
+      return 0;
+
   while (size > 0)
     {
       /* Sector to write, starting byte offset within sector. */
@@ -599,6 +607,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       bytes_written += chunk_size;
     }
   free (bounce);
+
+  // write back modified disk inode to disk
+  block_write (fs_device, inode->sector, &inode->data);
 
   return bytes_written;
 }
