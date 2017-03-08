@@ -53,6 +53,7 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+    struct inode_disk data;
   };
 
 static off_t
@@ -482,7 +483,7 @@ inode_remove (struct inode *inode)
    Returns the number of bytes actually read, which may be less
    than SIZE if an error occurs or end of file is reached. */
 off_t
-inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset, bool meta) 
+inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset, bool meta)
 {
   //uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
@@ -490,8 +491,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset, boo
   while (size > 0)
     {
       /* Disk sector to read, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      block_sector_t prefetch_sector_idx = byte_to_sector (inode, offset+BLOCK_SECTOR_SIZE);
+      block_sector_t sector_idx = byte_to_sector (&inode->data, offset);
+      block_sector_t prefetch_sector_idx = byte_to_sector (&inode->data, offset+BLOCK_SECTOR_SIZE);
 
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
@@ -506,7 +507,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset, boo
         break;
 
       cache_read_write (READ, sector_idx, prefetch_sector_idx, meta? META_DATA: REAL_DATA, buffer_, bytes_read, 0, sector_ofs, chunk_size);
-      
+
       /* Advance. */
       size -= chunk_size;
       offset += chunk_size;
@@ -523,7 +524,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset, boo
    growth is not yet implemented.) */
 off_t
 inode_write_at (struct inode *inode, const void *buffer_, off_t size,
-                off_t offset, bool meta) 
+                off_t offset, bool meta)
 {
   //const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
@@ -555,7 +556,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       if (chunk_size <= 0)
         break;
 
-      cache_read_write (WRITE, sector_idx, 0, meta? META_DATA: REAL_DATA, buffer_, 0, bytes_written, sector_ofs, chunk_size);
+      cache_read_write (WRITE, sector_idx, 0, meta? META_DATA: REAL_DATA, (void*)buffer_, 0, bytes_written, sector_ofs, chunk_size);
 
       /* Advance. */
       size -= chunk_size;
