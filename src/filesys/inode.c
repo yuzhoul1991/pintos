@@ -559,6 +559,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         return 0;
       }
 
+  // write to cache latest inode since it had grown
+  cache_read_write (WRITE, inode->sector, inode->sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+
   while (size > 0)
     {
       /* Sector to write, starting byte offset within sector. */
