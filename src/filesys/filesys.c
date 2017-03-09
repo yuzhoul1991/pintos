@@ -69,7 +69,7 @@ filesys_done (void)
 bool
 filesysdir_create (const char *dirname)
 {
-  char filename[15];
+  char filename[512];
   bool success;
   block_sector_t inode_sector = 0;
   block_sector_t sector = 0;
@@ -93,7 +93,7 @@ filesysdir_create (const char *dirname)
 bool
 filesysdir_chdir (const char *dirname)
 {
-  char filename[15];
+  char filename[512];
   bool success;
   block_sector_t sector = 0;
   if(!filesys_parse_path (dirname, filename, &sector))
@@ -125,7 +125,7 @@ bool
 filesys_create (const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
-  char filename[15];
+  char filename[512];
   bool success;
 
   block_sector_t sector = 0;
@@ -155,7 +155,7 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  char filename[15];
+  char filename[512];
   block_sector_t sector = 0;
   if(!filesys_parse_path (name, filename, &sector))
     return false;
@@ -177,7 +177,7 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name)
 {
-  char filename[15];
+  char filename[512];
   bool success;
   block_sector_t sector = 0;
   if(!filesys_parse_path (name, filename, &sector))
@@ -218,7 +218,7 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
   fullname = palloc_get_page (0);
   if (fullname == NULL)
     return false;
-  strlcpy (fullname, name, strlen(name));
+  strlcpy (fullname, name, strlen(name)+1);
 
   for (token = strtok_r (fullname, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
   {
@@ -234,15 +234,15 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
 
   if(argc==0)
   {
-    strlcpy (filename, fullname, strlen(fullname));
+    strlcpy (filename, fullname, strlen(fullname)+1);
     return true;
   }
  
-  for(i=0; i<argc-1;i++)
+  for(i=0; i<argc;i++)
     {
       if(i==argc-1)
         {
-          strlcpy (filename, argv[i], strlen(argv[i]));
+          strlcpy (filename, argv[i], strlen(argv[i])+1);
           return true;
         }
       if(i!=0)
