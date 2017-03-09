@@ -38,7 +38,7 @@ struct inode_disk
 struct indirect_block
   {
     block_sector_t blocks[BLOCK_ENTRY_NUM];
-  }
+  };
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -404,9 +404,9 @@ inode_create (block_sector_t sector, off_t length, uint32_t type, block_sector_t
       inode_disk->length = 0;
       inode_disk->indirect_block = -1;
       inode_disk->dbl_indirect_block = -1;
-      disk_inode->type = type;
-      disk_inode->parent_sector_number = parent_sector;
-      disk_inode->num_of_valid_entries = 0;
+      inode_disk->type = type;
+      inode_disk->parent_sector_number = parent_sector;
+      inode_disk->num_of_valid_entries = 0;
 
       int i;
       for (i = 0; i < NUM_DIRECT_BLOCKS; i++)
@@ -446,7 +446,7 @@ inode_open (block_sector_t sector)
         {
           inode_reopen (inode);
           found = true;
-          break; 
+          break;
         }
     }
   lock_release (&open_inodes_lock);
@@ -512,12 +512,12 @@ inode_close (struct inode *inode)
         {
           inode_free (inode);
         }
-      
+
       inode_unlock (inode);
-      free (inode); 
+      free (inode);
       inode_freed = true;
     }
-  if(!inode_freed) 
+  if(!inode_freed)
     inode_unlock (inode);
 }
 
@@ -581,7 +581,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   off_t bytes_written = 0;
 
   inode_lock (inode);
-  int deny_write_cnt = inode->deny_write_cnt; 
+  int deny_write_cnt = inode->deny_write_cnt;
   inode_unlock (inode);
   if (deny_write_cnt)
     return 0;
@@ -685,7 +685,7 @@ inode_type (const struct inode *inode)
 void
 inode_increment_valid_entries (const struct inode *inode)
 {
-  
+
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
   cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
@@ -699,11 +699,11 @@ inode_increment_valid_entries (const struct inode *inode)
 void
 inode_decrement_valid_entries (const struct inode *inode)
 {
-  
+
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
   cache_read_write (READ, inode->sector, total_sectors, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
-  
+
   if(disk_inode->num_of_valid_entries<=0)
     PANIC("decrementing num_of_valid_entries which is 0");
   disk_inode->num_of_valid_entries--;
@@ -716,14 +716,14 @@ inode_decrement_valid_entries (const struct inode *inode)
 uint32_t
 inode_get_valid_entries (const struct inode *inode)
 {
-  
+
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
   cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
-  
+
   uint32_t valid_entries = disk_inode->num_of_valid_entries;
   free (disk_inode);
-  
+
   return valid_entries;
 }
 
@@ -745,7 +745,7 @@ inode_sector_number (const struct inode *inode)
  return  inode->sector;
 }
 
-int 
+int
 inode_get_open_cnt (struct inode *inode)
 {
   inode_lock (inode);
