@@ -34,7 +34,6 @@ void
 fsutil_cat (char **argv)
 {
   const char *file_name = argv[1];
-  
   struct file *file;
   char *buffer;
 
@@ -76,6 +75,7 @@ fsutil_extract (char **argv UNUSED)
 
   struct block *src;
   void *header, *data;
+
 
   /* Allocate buffers. */
   header = malloc (BLOCK_SECTOR_SIZE);
