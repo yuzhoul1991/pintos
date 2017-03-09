@@ -503,6 +503,7 @@ init_thread (struct thread *t, const char *name, int priority)
     strlcpy (t->process_name, "", sizeof t->process_name);
     t->exit_status = -1;
   #endif
+  t->cwd_sector_number = ROOT_DIR_SECTOR;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -701,4 +702,41 @@ filesys_helper (void *aux UNUSED)
       cache_write_behind ();
       cache_read_ahead ();
     }
+}
+
+void
+thread_set_sector (block_sector_t sector)
+{
+  thread_current ()->cwd_sector_number = sector;
+}
+
+block_sector_t
+thread_get_sector (void)
+{
+  return thread_current ()->cwd_sector_number;
+}
+
+bool 
+thread_find_current_dir (block_sector_t sector)
+{
+  bool found = false;
+  enum intr_level oldlevel = intr_disable ();
+
+  struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if(t->cwd_sector_number == sector)
+        {
+          found = true;
+          break;
+        }
+    }
+  intr_set_level (oldlevel);
+  
+  return found;
 }

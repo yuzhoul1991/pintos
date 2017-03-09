@@ -203,5 +203,8 @@ struct list_elem *thread_find_fd(struct thread *t, int fd);
 struct list_elem *thread_find_mmap(struct thread *t, int fd);
 
 void thread_munmap(struct mmap_info *m_info);
+void thread_set_sector (block_sector_t sector);
+block_sector_t thread_get_sector (void);
+bool thread_find_current_dir (block_sector_t sector);
 
 #endif /* threads/thread.h */

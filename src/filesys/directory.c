@@ -8,93 +8,13 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 
-struct dir *
-parse_dir_file_args(const char *dir_file_arg,char *filename,uint32_t *filetype,bool *success)
-{
-  char *file_name_arg;
-  char *argv[128]; //FIX ME 128 or less based on the 8MB file size partition
-  char *token, *save_ptr;
-  uint32_t argc=0;
-  block_sector_t sector_num;
-  file_name_arg = palloc_get_page (0);
-  strlcpy (file_name_arg, dir_file_arg, PGSIZE);
-  char *file_name = strtok_r(file_name_arg, "/", &save_ptr);
-  struct dir *dir;
-  struct inode *inode;
-  bool l_success;
-  if (file_name != NULL)
-  {
-    argv[argc] = file_name;
-    argc++;
-  }
-  for (token = strtok_r (NULL, "/|//", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
-  {
-    argv[argc] = token;
-    argc++;
-  }
-  int i;
-  for (i=argc; i<128; i++)
-  {
-    argv[i] = "\0";
-  }
-  struct thread *t= thread_current();
-  if (file_name == NULL)
-  {
-   dir = dir_open_root();
-   filename  = file_name_arg;
-   l_success = dir_lookup (dir,filename,&inode);
-   *success = l_success;
-   *filetype = inode_type(inode);
-  }
-  else
-  {
-    if (*file_name == '.')
-    {
-     sector_num = t->cwd_sector_number;
-    }
-    else if (*file_name == "..") //FIX ME use stringcmp
-    {
-      struct inode *linode = inode_open(t->cwd_sector_number);
-      sector_num = inode_parent_sector_number (linode);
-    }
-    else //root directory
-    {
-      sector_num =  ROOT_DIR_SECTOR;
-    }
-    for (i=1;argv[i] != '\0';i++)
-    {
-     dir = dir_open(inode_open(sector_num));
-     filename = argv[i];
-     l_success = dir_lookup (dir,filename,&inode);
-     *success = l_success;
-     *filetype = inode_type (inode);
-     if(!l_success)
-       return dir;
-     inode_set_parent_sector (inode,sector_num);
-     inode_increment_valid_entries (inode);
-     if (*file_name == '.')
-     {      
-       *success = 0;
-       return dir;
-     }      
-     else if (*file_name == "..")
-     {
-       struct inode *linode = inode_open(t->cwd_sector_number);
-      sector_num = inode_parent_sector_number (linode);
-     } 
-     else //root directory
-     { 
-       sector_num = inode_sector_number (inode);
-     }
-    }
-  }
-  return dir;
-}
+
 /* A directory. */
 struct dir 
   {
     struct inode *inode;                /* Backing store. */
     off_t pos;                          /* Current position. */
+    struct lock lock;                   /* Lock per directory */
   };
 
 /* A single directory entry. */
@@ -105,12 +25,23 @@ struct dir_entry
     bool in_use;                        /* In use or free? */
   };
 
+static void 
+dir_lock (struct dir *dir)
+{
+  lock_acquire (&dir->lock);
+}
+
+static void 
+dir_unlock (struct dir *dir)
+{
+  lock_release (&dir->lock);
+}
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create (block_sector_t sector, size_t entry_cnt)
+dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_sector)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), DIR_TYPE, parent_sector);
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -123,6 +54,7 @@ dir_open (struct inode *inode)
     {
       dir->inode = inode;
       dir->pos = 0;
+      lock_init (&dir->lock);
       return dir;
     }
   else
@@ -139,6 +71,14 @@ struct dir *
 dir_open_root (void)
 {
   return dir_open (inode_open (ROOT_DIR_SECTOR));
+}
+
+/* Opens the directory in sector and returns a directory for it.
+   Return true if successful, false on failure. */
+struct dir *
+dir_open_sector (block_sector_t sector)
+{
+  return dir_open (inode_open (sector));
 }
 
 /* Opens and returns a new directory for the same inode as DIR.
@@ -200,18 +140,20 @@ lookup (const struct dir *dir, const char *name,
    On success, sets *INODE to an inode for the file, otherwise to
    a null pointer.  The caller must close *INODE. */
 bool
-dir_lookup (const struct dir *dir, const char *name,
+dir_lookup (struct dir *dir, const char *name,
             struct inode **inode) 
 {
   struct dir_entry e;
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-
+  
+  dir_lock (dir);
   if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
     *inode = NULL;
+  dir_unlock (dir);
 
   return *inode != NULL;
 }
@@ -236,6 +178,9 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   if (*name == '\0' || strlen (name) > NAME_MAX)
     return false;
 
+  /* Lock the directory */
+  dir_lock (dir);
+
   /* Check that NAME is not in use. */
   if (lookup (dir, name, NULL, NULL))
     goto done;
@@ -257,8 +202,11 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
   success = inode_write_at (dir->inode, &e, sizeof e, ofs, true) == sizeof e;
+  if(success)
+    inode_increment_valid_entries (dir->inode);
 
  done:
+  dir_unlock (dir);
   return success;
 }
 
@@ -276,6 +224,9 @@ dir_remove (struct dir *dir, const char *name)
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
+  /* Lock the directory */
+  dir_lock (dir);
+
   /* Find directory entry. */
   if (!lookup (dir, name, &e, &ofs))
     goto done;
@@ -285,6 +236,19 @@ dir_remove (struct dir *dir, const char *name)
   if (inode == NULL)
     goto done;
 
+  /* If the inode is a directory, remove only if it is empty */
+  if (inode_type (inode) == DIR_TYPE)
+    {
+      if(inode_sector_number (inode) == ROOT_DIR_SECTOR)
+        goto done;
+      if(inode_get_valid_entries (inode) != 0)
+        goto done;
+      if(inode_get_open_cnt (inode) > 2)
+        goto done;
+      if(thread_find_current_dir (inode_sector_number (inode)))
+        goto done;
+    }
+
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs, true) != sizeof e) 
@@ -292,10 +256,13 @@ dir_remove (struct dir *dir, const char *name)
 
   /* Remove inode. */
   inode_remove (inode);
+  inode_decrement_valid_entries (dir->inode);
   success = true;
 
  done:
   inode_close (inode);
+  /* Unlock the directory */
+  dir_unlock (dir);
   return success;
 }
 

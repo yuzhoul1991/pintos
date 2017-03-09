@@ -7,6 +7,8 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "filesys/cache.h"
+#include "threads/thread.h"
+#include "threads/palloc.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -67,32 +69,51 @@ filesys_done (void)
 bool
 filesysdir_create (const char *dirname)
 {
-  char *filename;
-  uint32_t filetype;
-  bool lsuccess;
+  char filename[15];
+  bool success;
   block_sector_t inode_sector = 0;
-  struct dir *dir = parse_dir_file_args (dirname,filename,&filetype,&lsuccess);
-  if(!lsuccess && (dir != NULL))
-     return lsuccess;
+  block_sector_t sector = 0;
+  if(!filesys_parse_path (dirname, filename, &sector))
+    return false;
 
-  free_map_allocate(1,&inode_sector);
-  lsuccess = dir_create(inode_sector,1); //1 entry
-  struct inode *inode= inode_open(inode_sector);
-  inode_set_type(inode,1); //1 for directory
-  return lsuccess;
+  struct dir *dir = dir_open_sector (sector);
+  success = (dir != NULL
+                  && free_map_allocate (1, &inode_sector)
+                  && dir_add (dir, filename, inode_sector)
+                  && dir_create (inode_sector, 1, sector));
+
+  if (!success && inode_sector != 0)
+    free_map_release (inode_sector, 1);
+  dir_close (dir);
+
+  return success;
 
 }
 
 bool
 filesysdir_chdir (const char *dirname)
 {
-  char *filename;
-  uint32_t filetype;
-  bool lsuccess;
-  //block_sector_t inode_sector = 0;
-  struct dir *dir = parse_dir_file_args (dirname,filename,&filetype,&lsuccess);
-  //if(!lsuccess && (dir != NULL))
-     return lsuccess;
+  char filename[15];
+  bool success;
+  block_sector_t sector = 0;
+  if(!filesys_parse_path (dirname, filename, &sector))
+    return false;
+
+  struct dir *dir = dir_open_sector (sector);
+  struct inode *inode = NULL;
+
+  success = (dir != NULL
+                  && dir_lookup (dir, filename, &inode)
+                  && (inode_type (inode) == DIR_TYPE));
+
+  if (!success)
+    return false;
+  
+  
+  thread_set_sector (inode_sector_number (inode));
+  dir_close (dir);
+
+  return success;
 
 }
 
@@ -104,25 +125,23 @@ bool
 filesys_create (const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
-  char *filename;
-  uint32_t filetype;
-  bool lsuccess;
+  char filename[15];
   bool success;
 
-  //struct dir *dir = dir_open_root ();
-  struct dir *dir = parse_dir_file_args (name,filename,&filetype,&lsuccess);
+  block_sector_t sector = 0;
+  if(!filesys_parse_path (name, filename, &sector))
+    return false;
  
-  if(!lsuccess)
-     return lsuccess;
-  else if (!filetype) // should be afile
-  {
-     success = (dir != NULL
+  struct dir *dir = dir_open_sector (sector);
+  
+  success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
+                  && inode_create (inode_sector, initial_size, FILE_TYPE, sector)
                   && dir_add (dir, filename, inode_sector));
-  }
+
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
+
   dir_close (dir);
 
   return success;
@@ -134,19 +153,20 @@ filesys_create (const char *name, off_t initial_size)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name,uint32_t *filetype)
+filesys_open (const char *name)
 {
-  char *filename;
-  bool success;
-  //struct dir *dir = dir_open_root ();
-  struct dir *dir = parse_dir_file_args (name,filename,filetype,&success);
+  char filename[15];
+  block_sector_t sector = 0;
+  if(!filesys_parse_path (name, filename, &sector))
+    return false;
+ 
+  struct dir *dir = dir_open_sector (sector);
   struct inode *inode = NULL;
 
   if (dir != NULL)
     dir_lookup (dir, filename, &inode);
   dir_close (dir);
  
-  //inode->data.type = *filetype; 
   return file_open (inode);
 }
 
@@ -157,8 +177,15 @@ filesys_open (const char *name,uint32_t *filetype)
 bool
 filesys_remove (const char *name)
 {
-  struct dir *dir = dir_open_root ();
-  bool success = dir != NULL && dir_remove (dir, name);
+  char filename[15];
+  bool success;
+  block_sector_t sector = 0;
+  if(!filesys_parse_path (name, filename, &sector))
+    return false;
+
+  struct dir *dir = dir_open_sector (sector);
+  success = (dir != NULL 
+              && dir_remove (dir, name));
   dir_close (dir);
 
   return success;
@@ -170,8 +197,90 @@ do_format (void)
 {
   printf ("Formatting file system...");
   free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, 16))
+  if (!dir_create (ROOT_DIR_SECTOR, 16, ROOT_DIR_SECTOR))
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");
+}
+
+bool
+filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_sector)
+{
+  char *argv[128]; 
+  char *token, *save_ptr;
+  uint32_t argc=0;
+  *final_dir_sector = thread_get_sector ();
+
+  if(name==NULL)
+    return false;
+
+  char *fullname;
+  fullname = palloc_get_page (0);
+  if (fullname == NULL)
+    return false;
+  strlcpy (fullname, name, strlen(name));
+
+  for (token = strtok_r (fullname, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
+  {
+    argv[argc] = token;
+    argv[argc][strlen(argv[argc])] = '\0';
+    argc++;
+  }
+  uint32_t i;
+  for (i=argc; i<128; i++)
+  {
+    argv[i] = "\0";
+  }
+
+  if(argc==0)
+  {
+    strlcpy (filename, fullname, strlen(fullname));
+    return true;
+  }
+ 
+  for(i=0; i<argc-1;i++)
+    {
+      if(i==argc-1)
+        {
+          strlcpy (filename, argv[i], strlen(argv[i]));
+          return true;
+        }
+      if(i!=0)
+        {
+          if(!strcmp(argv[i], "."))
+            return false;
+        }
+      if(!strcmp(argv[i], "."))
+        {
+          *final_dir_sector = ROOT_DIR_SECTOR;
+        }
+      else if(!strcmp(argv[i], ".."))
+        {
+          struct dir *dir = dir_open_sector (*final_dir_sector);
+          if(dir == NULL)
+            return false;
+          *final_dir_sector = inode_parent_sector_number (dir_get_inode (dir));
+          dir_close (dir);
+        }
+      else
+        {
+          struct dir *dir = dir_open_sector (*final_dir_sector);
+          if(dir == NULL)
+            return false; 
+          struct inode *inode = NULL;
+          if(dir_lookup(dir, argv[i], &inode)
+             && (inode_type (inode) == DIR_TYPE))
+            {
+              *final_dir_sector = inode_parent_sector_number (inode);
+            }
+          else
+            { 
+              dir_close (dir);
+              return false;
+            }
+        }
+    }
+  
+  return true;
+
 }

@@ -166,3 +166,25 @@ file_tell (struct file *file)
   ASSERT (file != NULL);
   return file->pos;
 }
+
+/* Returns the type FILE/DIRECTORY . */
+uint32_t
+file_type (struct file *file) 
+{
+  ASSERT (file != NULL);
+  return inode_type (file->inode);
+}
+
+bool 
+file_isdir (struct file *file)
+{
+  ASSERT (file != NULL);
+  return (inode_type (file->inode) == DIR_TYPE);
+}
+
+int 
+file_inumber (struct file *file)
+{
+  ASSERT (file != NULL);
+  return inode_sector_number (file->inode);
+}
