@@ -185,7 +185,7 @@ filesys_remove (const char *name)
 
   struct dir *dir = dir_open_sector (sector);
   success = (dir != NULL 
-              && dir_remove (dir, name));
+              && dir_remove (dir, filename));
   dir_close (dir);
 
   return success;
