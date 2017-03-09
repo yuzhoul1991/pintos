@@ -30,7 +30,7 @@ struct inode_disk
     block_sector_t indirect_block;          /* Sector number of the indirect block */
     block_sector_t dbl_indirect_block;      /* Sector numberr of the double indirect block */
     block_sector_t direct_blocks[NUM_DIRECT_BLOCKS];  /* Array for storing the pointers in inode */
-    uint32_t type; //0: file,1: directory
+    uint32_t type; 
     block_sector_t parent_sector_number;
     uint32_t num_of_valid_entries; // includes files and subdirectories
   };
