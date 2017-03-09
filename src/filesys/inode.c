@@ -18,8 +18,13 @@ struct inode_disk
     block_sector_t start;               /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
-  };
+    uint32_t unused[122];               /* Not used. */
+    // needed for sub directory implementation
+   uint32_t type; //0: file,1: directory
+   block_sector_t parent_sector_number;
+   uint32_t num_of_valid_entries; // includes files and subdirectories
+   
+  } inode_disk;
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -37,7 +42,7 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-  };
+  } inode;
 
 /* Returns the block device sector that contains byte offset POS
    within INODE.
@@ -315,4 +320,69 @@ inode_length (const struct inode *inode)
   length = disk_inode->length;
   free (disk_inode);
   return length;
+}
+
+/* Returns the type either file or directory */
+uint32_t
+inode_type (const struct inode *inode)
+{
+  struct inode_disk *disk_inode = NULL;
+  disk_inode = calloc (1, sizeof *disk_inode);
+  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  uint32_t type = 0;
+  type = disk_inode->type;
+  free (disk_inode);
+  return type;
+}
+
+void
+inode_set_parent_sector (const struct inode *inode,block_sector_t sector)
+{
+
+  struct inode_disk *disk_inode = NULL;
+  disk_inode = calloc (1, sizeof *disk_inode);
+  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  disk_inode->parent_sector_number = sector;
+  free (disk_inode);
+}
+
+void
+inode_set_type (const struct inode *inode,uint32_t type)
+{
+
+  struct inode_disk *disk_inode = NULL;
+  disk_inode = calloc (1, sizeof *disk_inode);
+  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  disk_inode->type = type;
+  free (disk_inode);
+}
+void
+inode_increment_valid_entries (const struct inode *inode)
+{
+  
+  struct inode_disk *disk_inode = NULL;
+  disk_inode = calloc (1, sizeof *disk_inode);
+  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  disk_inode->num_of_valid_entries = disk_inode->num_of_valid_entries + 1;
+  free (disk_inode);
+
+
+}
+
+block_sector_t
+inode_parent_sector_number (const struct inode *inode)
+{
+  struct inode_disk *disk_inode = NULL;
+  disk_inode = calloc (1, sizeof *disk_inode);
+  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  block_sector_t sec_num;
+  sec_num = disk_inode->parent_sector_number;
+  free (disk_inode);
+  return sec_num;
+}
+
+block_sector_t
+inode_sector_number (const struct inode *inode)
+{
+ return  inode->sector;
 }

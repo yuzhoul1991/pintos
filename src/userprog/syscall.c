@@ -238,7 +238,7 @@ syscall_open (const char *file)
     PANIC("file_info malloc failed");
   f_info->fd = 2;
   filesys_lock ();
-  f_info->file_ptr = filesys_open(file);
+  f_info->file_ptr = filesys_open(file,&(f_info->type));
   filesys_unlock ();
   if(f_info->file_ptr == NULL)
   {
@@ -465,6 +465,22 @@ syscall_munmap (mapid_t mapid)
     }
 }
 
+static int
+syscall_mkdir (const char *dir)
+{
+  bool success;
+  success = filesysdir_create(dir);
+  return success;
+}
+
+static int
+syscall_chdir (const char *dir)
+{
+  bool success;
+  success = filesysdir_chdir(dir);
+  return success;
+}
+
 static void
 syscall_handler (struct intr_frame *f)
 {
@@ -555,6 +571,18 @@ syscall_handler (struct intr_frame *f)
     case(SYS_MUNMAP):
       map_id = (mapid_t)syscall_get_arg(f, 4);
       syscall_munmap (map_id);
+      break;
+    case(SYS_MKDIR):
+      file_name = (char *)syscall_get_arg(f, 4);
+      syscall_check_valid_user_pointer(file_name, false, LOAD_PIN);
+      f->eax = syscall_mkdir (file_name);
+      syscall_unpin_user_pointer(file_name);
+      break;
+    case(SYS_CHDIR):
+      file_name = (char *)syscall_get_arg(f, 4);
+      syscall_check_valid_user_pointer(file_name, false, LOAD_PIN);
+      f->eax = syscall_chdir (file_name);
+      syscall_unpin_user_pointer(file_name);
       break;
     default:
       printf ("syscall not implemented\n");

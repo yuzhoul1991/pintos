@@ -19,5 +19,10 @@ off_t inode_write_at (struct inode *, const void *, off_t size, off_t offset, bo
 void inode_deny_write (struct inode *);
 void inode_allow_write (struct inode *);
 off_t inode_length (const struct inode *);
-
+uint32_t inode_type (const struct inode *);
+void inode_set_parent_sector (const struct inode *inode,block_sector_t sector);
+void inode_increment_valid_entries (const struct inode *inode);
+block_sector_t inode_parent_sector_number (const struct inode *inode);
+block_sector_t inode_sector_number (const struct inode *inode);
+void inode_set_type (const struct inode *inode,uint32_t type);
 #endif /* filesys/inode.h */

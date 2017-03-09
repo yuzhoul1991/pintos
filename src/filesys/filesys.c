@@ -63,7 +63,39 @@ filesys_done (void)
   free_map_close ();
   cache_empty ();
 }
-
+
+bool
+filesysdir_create (const char *dirname)
+{
+  char *filename;
+  uint32_t filetype;
+  bool lsuccess;
+  block_sector_t inode_sector = 0;
+  struct dir *dir = parse_dir_file_args (dirname,filename,&filetype,&lsuccess);
+  if(!lsuccess && (dir != NULL))
+     return lsuccess;
+
+  free_map_allocate(1,&inode_sector);
+  lsuccess = dir_create(inode_sector,1); //1 entry
+  struct inode *inode= inode_open(inode_sector);
+  inode_set_type(inode,1); //1 for directory
+  return lsuccess;
+
+}
+
+bool
+filesysdir_chdir (const char *dirname)
+{
+  char *filename;
+  uint32_t filetype;
+  bool lsuccess;
+  //block_sector_t inode_sector = 0;
+  struct dir *dir = parse_dir_file_args (dirname,filename,&filetype,&lsuccess);
+  //if(!lsuccess && (dir != NULL))
+     return lsuccess;
+
+}
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
@@ -72,11 +104,23 @@ bool
 filesys_create (const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
-  bool success = (dir != NULL
+  char *filename;
+  uint32_t filetype;
+  bool lsuccess;
+  bool success;
+
+  //struct dir *dir = dir_open_root ();
+  struct dir *dir = parse_dir_file_args (name,filename,&filetype,&lsuccess);
+ 
+  if(!lsuccess)
+     return lsuccess;
+  else if (!filetype) // should be afile
+  {
+     success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
+                  && dir_add (dir, filename, inode_sector));
+  }
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   dir_close (dir);
@@ -90,15 +134,19 @@ filesys_create (const char *name, off_t initial_size)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name)
+filesys_open (const char *name,uint32_t *filetype)
 {
-  struct dir *dir = dir_open_root ();
+  char *filename;
+  bool success;
+  //struct dir *dir = dir_open_root ();
+  struct dir *dir = parse_dir_file_args (name,filename,filetype,&success);
   struct inode *inode = NULL;
 
   if (dir != NULL)
-    dir_lookup (dir, name, &inode);
+    dir_lookup (dir, filename, &inode);
   dir_close (dir);
-
+ 
+  //inode->data.type = *filetype; 
   return file_open (inode);
 }
 

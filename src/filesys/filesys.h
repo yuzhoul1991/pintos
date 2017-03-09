@@ -19,9 +19,11 @@ void filesys_unlock (void);
 void filesys_init (bool format);
 void filesys_done (void);
 bool filesys_create (const char *name, off_t initial_size);
-struct file *filesys_open (const char *name);
+struct file *filesys_open (const char *name,uint32_t *filetype);
 bool filesys_remove (const char *name);
 
 void filesys_lock_init (void);
+bool filesysdir_create (const char *dirname);
+bool filesysdir_chdir (const char *dirname);
 
 #endif /* filesys/filesys.h */

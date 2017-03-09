@@ -530,6 +530,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
   off_t file_ofs;
   bool success = false;
   int i;
+  uint32_t type;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -539,7 +540,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
 
   /* Open executable file. */
   filesys_lock ();
-  file = filesys_open (file_name);
+  file = filesys_open (file_name,&type);
   filesys_unlock ();
 
   if (file == NULL)

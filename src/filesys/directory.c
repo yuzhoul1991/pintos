@@ -5,7 +5,91 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/palloc.h"
+#include "threads/thread.h"
 
+struct dir *
+parse_dir_file_args(const char *dir_file_arg,char *filename,uint32_t *filetype,bool *success)
+{
+  char *file_name_arg;
+  char *argv[128]; //FIX ME 128 or less based on the 8MB file size partition
+  char *token, *save_ptr;
+  uint32_t argc=0;
+  block_sector_t sector_num;
+  file_name_arg = palloc_get_page (0);
+  strlcpy (file_name_arg, dir_file_arg, PGSIZE);
+  char *file_name = strtok_r(file_name_arg, "/", &save_ptr);
+  struct dir *dir;
+  struct inode *inode;
+  bool l_success;
+  if (file_name != NULL)
+  {
+    argv[argc] = file_name;
+    argc++;
+  }
+  for (token = strtok_r (NULL, "/|//", &save_ptr); token != NULL; token = strtok_r (NULL, " ", &save_ptr))
+  {
+    argv[argc] = token;
+    argc++;
+  }
+  int i;
+  for (i=argc; i<128; i++)
+  {
+    argv[i] = "\0";
+  }
+  struct thread *t= thread_current();
+  if (file_name == NULL)
+  {
+   dir = dir_open_root();
+   filename  = file_name_arg;
+   l_success = dir_lookup (dir,filename,&inode);
+   *success = l_success;
+   *filetype = inode_type(inode);
+  }
+  else
+  {
+    if (*file_name == '.')
+    {
+     sector_num = t->cwd_sector_number;
+    }
+    else if (*file_name == "..") //FIX ME use stringcmp
+    {
+      struct inode *linode = inode_open(t->cwd_sector_number);
+      sector_num = inode_parent_sector_number (linode);
+    }
+    else //root directory
+    {
+      sector_num =  ROOT_DIR_SECTOR;
+    }
+    for (i=1;argv[i] != '\0';i++)
+    {
+     dir = dir_open(inode_open(sector_num));
+     filename = argv[i];
+     l_success = dir_lookup (dir,filename,&inode);
+     *success = l_success;
+     *filetype = inode_type (inode);
+     if(!l_success)
+       return dir;
+     inode_set_parent_sector (inode,sector_num);
+     inode_increment_valid_entries (inode);
+     if (*file_name == '.')
+     {      
+       *success = 0;
+       return dir;
+     }      
+     else if (*file_name == "..")
+     {
+       struct inode *linode = inode_open(t->cwd_sector_number);
+      sector_num = inode_parent_sector_number (linode);
+     } 
+     else //root directory
+     { 
+       sector_num = inode_sector_number (inode);
+     }
+    }
+  }
+  return dir;
+}
 /* A directory. */
 struct dir 
   {

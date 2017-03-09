@@ -201,6 +201,7 @@ thread_create (const char *name, int priority,
     {
       t_current->recent_child->child_thread = t;
       t->parent_child_info = t_current->recent_child;
+      t->cwd_sector_number = t_current->cwd_sector_number;
     }
   #endif
 

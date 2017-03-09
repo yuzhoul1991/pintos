@@ -9,6 +9,7 @@
 #include "filesys/filesys.h"
 #include "userprog/syscall.h"
 #include "vm/page.h"
+#include "devices/block.h"
 
 /* Struct which stores relevant file info */
 struct file_info
@@ -16,6 +17,7 @@ struct file_info
     int fd;                      /* fd of the opened file */
     struct file *file_ptr;       /* pointer to the file opened */
     struct list_elem file_elem;  /* List element for fd_list list. */
+    uint32_t type; //0:file , 1: directory
 
   };
 
@@ -153,6 +155,9 @@ struct thread
     int exit_status;                      /* Exit status of the thread */
     struct hash spage_table;              /* Per process suplimental page table */
 #endif
+
+     /* for directories */
+     block_sector_t cwd_sector_number; //  current working directory sector number can be used for figuringout inode
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
