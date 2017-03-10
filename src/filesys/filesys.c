@@ -111,6 +111,7 @@ filesysdir_chdir (const char *dirname)
   
   
   thread_set_sector (inode_sector_number (inode));
+  inode_close (inode);
   dir_close (dir);
 
   return success;
@@ -209,15 +210,16 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
   char *argv[128]; 
   char *token, *save_ptr;
   uint32_t argc=0;
+  bool success = false;
   *final_dir_sector = thread_get_sector ();
 
   if(name==NULL)
-    return false;
+    return success;
 
   char *fullname;
   fullname = palloc_get_page (0);
   if (fullname == NULL)
-    return false;
+    return success;
   strlcpy (fullname, name, strlen(name)+1);
 
   for (token = strtok_r (fullname, "/", &save_ptr); token != NULL; token = strtok_r (NULL, "/", &save_ptr))
@@ -235,7 +237,8 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
   if(argc==0)
   {
     strlcpy (filename, fullname, strlen(fullname)+1);
-    return true;
+    success = true;
+    goto done;
   }
  
   for(i=0; i<argc;i++)
@@ -243,12 +246,16 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
       if(i==argc-1)
         {
           strlcpy (filename, argv[i], strlen(argv[i])+1);
-          return true;
+          success = true;
+          goto done;
         }
       if(i!=0)
         {
           if(!strcmp(argv[i], "."))
-            return false;
+            {
+              success = false;
+              goto done;
+            }
         }
       if(!strcmp(argv[i], "."))
         {
@@ -258,7 +265,10 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
         {
           struct dir *dir = dir_open_sector (*final_dir_sector);
           if(dir == NULL)
-            return false;
+            {
+              success = false;
+              goto done;
+            }
           *final_dir_sector = inode_parent_sector_number (dir_get_inode (dir));
           dir_close (dir);
         }
@@ -266,21 +276,30 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
         {
           struct dir *dir = dir_open_sector (*final_dir_sector);
           if(dir == NULL)
-            return false; 
+            {
+              success = false;
+              goto done; 
+            }
           struct inode *inode = NULL;
           if(dir_lookup(dir, argv[i], &inode)
              && (inode_type (inode) == DIR_TYPE))
             {
               *final_dir_sector = inode_sector_number (inode);
+              inode_close (inode);
+              dir_close (dir);
             }
           else
             { 
+              inode_close (inode);
               dir_close (dir);
-              return false;
+              success = false;
+              goto done;
             }
         }
     }
   
-  return true;
+done:
+  palloc_free_page (fullname);
+  return success;
 
 }

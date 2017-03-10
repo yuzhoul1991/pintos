@@ -321,6 +321,8 @@ syscall_write (int fd, const void *buffer, unsigned size)
   if(e != NULL)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
+    if(f_info->type == DIR_TYPE)
+      return -1;
     filesys_lock ();
     int actual_write = file_write(f_info->file_ptr, buffer, size, false);
     filesys_unlock ();
