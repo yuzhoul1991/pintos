@@ -26,5 +26,4 @@ uint32_t inode_get_valid_entries (const struct inode *inode);
 block_sector_t inode_parent_sector_number (const struct inode *inode);
 block_sector_t inode_sector_number (const struct inode *inode);
 int inode_get_open_cnt (struct inode *inode);
-bool inode_readdir (struct inode *inode, char *name);
 #endif /* filesys/inode.h */

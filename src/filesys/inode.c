@@ -756,14 +756,3 @@ inode_get_open_cnt (struct inode *inode)
   return open_cnt;
 }
 
-bool
-inode_readdir (struct inode *inode, char *name)
-{
-  bool success = false;
-  struct dir *dir = dir_open_sector (inode->sector);
-  if (dir == NULL)
-    return false;
-  success = dir_readdir (dir, name);
-  dir_close (dir);
-  return success;
-}
