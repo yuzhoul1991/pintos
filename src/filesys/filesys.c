@@ -271,7 +271,7 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
           if(dir_lookup(dir, argv[i], &inode)
              && (inode_type (inode) == DIR_TYPE))
             {
-              *final_dir_sector = inode_parent_sector_number (inode);
+              *final_dir_sector = inode_sector_number (inode);
             }
           else
             { 
