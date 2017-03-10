@@ -29,6 +29,7 @@ struct cache_entry
     bool accessed;                 /* Indicates if the sector has been accessed since last eviction attempt */
     bool meta_retry;               /* If true for a meta data, then give an additional chance rather than evicting */
     bool entry_blocked;            /* Indicates if entry is blocked for reading/writing */
+    bool uninitialized;            /* Indicates if the cache data was uninitialized. Used only by free_map_entry */
     uint32_t pin;                  /* if pinned, cache block cannot be evicted */
     struct lock entry_lock;        /* lock per cache entry */
     struct condition entry_cond;   /* lock per cache entry */

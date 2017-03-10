@@ -15,16 +15,17 @@ cache_init (void)
   free_map_entry = malloc(sizeof(struct cache_entry));
   if (free_map_entry == NULL)
       PANIC ("free_map entry malloc failed!");
-  free_map_entry->old_sector = total_sectors;
-  free_map_entry->sector = FREE_MAP_SECTOR;
-  free_map_entry->cache_block = CACHE_ENTRIES;
-  free_map_entry->type = META_DATA;
-  free_map_entry->dirty = false;
-  free_map_entry->accessed = false;
-  free_map_entry->meta_retry = false;
+  free_map_entry->old_sector    = total_sectors;
+  free_map_entry->sector        = FREE_MAP_SECTOR;
+  free_map_entry->cache_block   = CACHE_ENTRIES;
+  free_map_entry->type          = META_DATA;
+  free_map_entry->dirty         = false;
+  free_map_entry->accessed      = false;
+  free_map_entry->meta_retry    = false;
   free_map_entry->entry_blocked = false;
-  free_map_entry->pin = 0;
-  free_map_entry->data = NULL;
+  free_map_entry->pin           = 0;
+  free_map_entry->uninitialized = true;
+  free_map_entry->data          = NULL;
   free_map_entry->data = malloc (BLOCK_SECTOR_SIZE);
       if(free_map_entry->data == NULL)
         PANIC ("free_map entry data malloc failed!");
@@ -206,6 +207,7 @@ cache_allocate (block_sector_t sector)
       c_entry->meta_retry    = false; 
       c_entry->entry_blocked = false; 
       c_entry->pin           = 0; 
+      c_entry->uninitialized = true; 
       c_entry->data          = NULL;
       c_entry->data          = malloc (BLOCK_SECTOR_SIZE);
       if(c_entry->data == NULL)
@@ -297,6 +299,9 @@ cache_read_write (uint32_t read_write, block_sector_t sector, block_sector_t pre
   if(sector == FREE_MAP_SECTOR)
     {
       c_entry = free_map_entry;
+      if(c_entry->uninitialized && (read_write == READ))
+        block_read (fs_device, sector, c_entry->data);
+      c_entry->uninitialized = false;
       hit = true;
     }
   else

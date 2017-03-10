@@ -30,5 +30,6 @@ off_t file_length (struct file *);
 uint32_t file_type (struct file *file); 
 bool file_isdir (struct file *file);
 int file_inumber (struct file *file);
+bool file_readdir (struct file *file, char *name);
 
 #endif /* filesys/file.h */

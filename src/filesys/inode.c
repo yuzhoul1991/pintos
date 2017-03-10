@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include "filesys/cache.h"
 #include "filesys/filesys.h"
+#include "filesys/directory.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
 
@@ -753,4 +754,16 @@ inode_get_open_cnt (struct inode *inode)
   int open_cnt = inode->open_cnt;
   inode_unlock (inode);
   return open_cnt;
+}
+
+bool
+inode_readdir (struct inode *inode, char *name)
+{
+  bool success = false;
+  struct dir *dir = dir_open_sector (inode->sector);
+  if (dir == NULL)
+    return false;
+  success = dir_readdir (dir, name);
+  dir_close (dir);
+  return success;
 }

@@ -491,13 +491,33 @@ syscall_chdir (const char *dir)
 }
 
 static bool
-syscall_readdir (int fd, const char *dir)
+syscall_readdir (int fd, char *name)
 {
-  //FIXME:
-  bool success;
-  if(fd && dir)
-    success = false;
-  return success;
+  bool success = false;
+  struct thread *t = thread_current ();
+  /* Find the struct file * corresponding to fd */
+  struct list_elem *e = thread_find_fd(t, fd);
+
+  if(e != NULL)
+  {
+    /* Find if file_ptr is a Dir */
+    struct file_info *f_info = list_entry (e, struct file_info, file_elem);
+    filesys_lock ();
+    bool isdir = file_isdir(f_info->file_ptr);
+    filesys_unlock ();
+    if(isdir)
+      {
+        filesys_lock ();
+        success = file_readdir(f_info->file_ptr, name);
+        filesys_unlock ();
+        return success;
+      }
+    else
+      return false;
+  }
+  else
+    return false;
+
 }
 
 static bool

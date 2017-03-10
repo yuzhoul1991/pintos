@@ -188,3 +188,10 @@ file_inumber (struct file *file)
   ASSERT (file != NULL);
   return inode_sector_number (file->inode);
 }
+
+bool 
+file_readdir (struct file *file, char *name)
+{
+  ASSERT (file != NULL);
+  return inode_readdir (file->inode, name);
+}
