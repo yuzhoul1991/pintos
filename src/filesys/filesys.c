@@ -77,6 +77,7 @@ filesysdir_create (const char *dirname)
     return false;
 
   if(filesys_parse_DOT (filename)
+     || filesys_parse_DOT_DOT (filename)
      || filesys_parse_SLASH (filename))
     return false;
 
@@ -107,6 +108,7 @@ filesysdir_chdir (const char *dirname)
   struct inode *inode = NULL;
 
   if (filesys_parse_DOT (filename)
+      || filesys_parse_DOT_DOT (filename)
       || filesys_parse_SLASH (filename))
     {
       if(dir == NULL)
@@ -152,6 +154,7 @@ filesys_create (const char *name, off_t initial_size)
     return false;
 
   if(filesys_parse_DOT (filename)
+     || filesys_parse_DOT_DOT (filename)
      || filesys_parse_SLASH (filename))
     return false;
 
@@ -187,6 +190,7 @@ filesys_open (const char *name)
   struct inode *inode = NULL;
 
   if (filesys_parse_DOT (filename)
+      || filesys_parse_DOT_DOT (filename)
       || filesys_parse_SLASH (filename))
     {
       if(dir != NULL)
@@ -218,6 +222,7 @@ filesys_remove (const char *name)
     return false;
 
   if(filesys_parse_DOT (filename)
+     || filesys_parse_DOT_DOT (filename)
      || filesys_parse_SLASH (filename))
     return false;
 
@@ -256,6 +261,17 @@ filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_se
   if(!strcmp(name, "."))
     {
       strlcpy (filename, name, strlen(name)+1);
+      return true;
+    }
+
+  if(!strcmp(name, ".."))
+    {
+      strlcpy (filename, name, strlen(name)+1);
+      struct dir *dir = dir_open_sector (*final_dir_sector);
+      if(dir == NULL)
+        return false;
+      *final_dir_sector = inode_parent_sector_number (dir_get_inode (dir));
+      dir_close (dir);
       return true;
     }
 
@@ -364,6 +380,18 @@ filesys_parse_DOT (char *name)
     return false;
 
   if(!strcmp(name, "."))
+    return true;
+  else
+    return false;
+}
+
+bool
+filesys_parse_DOT_DOT (char *name)
+{
+  if(name==NULL)
+    return false;
+
+  if(!strcmp(name, ".."))
     return true;
   else
     return false;

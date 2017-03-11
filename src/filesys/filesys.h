@@ -30,6 +30,7 @@ bool filesysdir_create (const char *dirname);
 bool filesysdir_chdir (const char *dirname);
 bool filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_sector);
 bool filesys_parse_DOT (char *name);
+bool filesys_parse_DOT_DOT (char *name);
 bool filesys_parse_SLASH (char *name);
 
 #endif /* filesys/filesys.h */
