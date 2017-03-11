@@ -550,7 +550,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
 
   /* Read and verify executable header. */
   filesys_lock ();
-  off_t bytes_read = file_read (file, &ehdr, sizeof ehdr);
+  off_t bytes_read = file_read (file, &ehdr, sizeof ehdr, false);
   filesys_unlock ();
   if (bytes_read != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -588,7 +588,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
       filesys_unlock ();
 
       filesys_lock ();
-      bytes_read = file_read (file, &phdr, sizeof phdr);
+      bytes_read = file_read (file, &phdr, sizeof phdr, false);
       filesys_unlock ();
       if (bytes_read != sizeof phdr)
         goto done;

@@ -250,6 +250,9 @@ syscall_open (const char *file)
     /* When a file is opened, add it to current thread's opened files. Also assign a fd */
     struct thread *t = thread_current ();
     f_info->fd = t->total_fds+2;
+    filesys_lock ();
+    f_info->type = file_type(f_info->file_ptr);
+    filesys_unlock ();
     t->total_fds++;
     list_push_back (&t->fd_list, &f_info->file_elem);
   }
@@ -293,7 +296,7 @@ syscall_read (int fd, void *buffer, unsigned size)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
     filesys_lock ();
-    int actual_read = file_read(f_info->file_ptr, buffer, size);
+    int actual_read = file_read(f_info->file_ptr, buffer, size, false);
     filesys_unlock ();
     return actual_read;
   }
@@ -318,8 +321,10 @@ syscall_write (int fd, const void *buffer, unsigned size)
   if(e != NULL)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
+    if(f_info->type == DIR_TYPE)
+      return -1;
     filesys_lock ();
-    int actual_write = file_write(f_info->file_ptr, buffer, size);
+    int actual_write = file_write(f_info->file_ptr, buffer, size, false);
     filesys_unlock ();
     return actual_write;
   }
@@ -465,6 +470,96 @@ syscall_munmap (mapid_t mapid)
     }
 }
 
+static bool
+syscall_mkdir (const char *dir)
+{
+  bool success;
+  filesys_lock ();
+  success = filesysdir_create(dir);
+  filesys_unlock ();
+  return success;
+}
+
+static bool
+syscall_chdir (const char *dir)
+{
+  bool success;
+  filesys_lock ();
+  success = filesysdir_chdir(dir);
+  filesys_unlock ();
+  return success;
+}
+
+static bool
+syscall_readdir (int fd, char *name)
+{
+  bool success = false;
+  struct thread *t = thread_current ();
+  /* Find the struct file * corresponding to fd */
+  struct list_elem *e = thread_find_fd(t, fd);
+
+  if(e != NULL)
+  {
+    /* Find if file_ptr is a Dir */
+    struct file_info *f_info = list_entry (e, struct file_info, file_elem);
+    filesys_lock ();
+    bool isdir = file_isdir(f_info->file_ptr);
+    filesys_unlock ();
+    if(isdir)
+      {
+        filesys_lock ();
+        success = file_readdir(f_info->file_ptr, name);
+        filesys_unlock ();
+        return success;
+      }
+    else
+      return false;
+  }
+  else
+    return false;
+
+}
+
+static bool
+syscall_isdir (int fd)
+{
+  struct thread *t = thread_current ();
+  /* Find the struct file * corresponding to fd */
+  struct list_elem *e = thread_find_fd(t, fd);
+
+  if(e != NULL)
+  {
+    /* Find if file_ptr is a Dir */
+    struct file_info *f_info = list_entry (e, struct file_info, file_elem);
+    filesys_lock ();
+    bool isdir = file_isdir(f_info->file_ptr);
+    filesys_unlock ();
+    return isdir;
+  }
+  else
+    return false;
+}
+
+static int
+syscall_inumber (int fd)
+{
+  struct thread *t = thread_current ();
+  /* Find the struct file * corresponding to fd */
+  struct list_elem *e = thread_find_fd(t, fd);
+
+  if(e != NULL)
+  {
+    /* Get the sector number of file_ptr's inode */
+    struct file_info *f_info = list_entry (e, struct file_info, file_elem);
+    filesys_lock ();
+    int inumber = file_inumber(f_info->file_ptr);
+    filesys_unlock ();
+    return inumber;
+  }
+  else
+    return -1;
+}
+
 static void
 syscall_handler (struct intr_frame *f)
 {
@@ -555,6 +650,33 @@ syscall_handler (struct intr_frame *f)
     case(SYS_MUNMAP):
       map_id = (mapid_t)syscall_get_arg(f, 4);
       syscall_munmap (map_id);
+      break;
+    case(SYS_MKDIR):
+      file_name = (char *)syscall_get_arg(f, 4);
+      syscall_check_valid_user_pointer(file_name, false, LOAD_PIN);
+      f->eax = syscall_mkdir (file_name);
+      syscall_unpin_user_pointer(file_name);
+      break;
+    case(SYS_CHDIR):
+      file_name = (char *)syscall_get_arg(f, 4);
+      syscall_check_valid_user_pointer(file_name, false, LOAD_PIN);
+      f->eax = syscall_chdir (file_name);
+      syscall_unpin_user_pointer(file_name);
+      break;
+    case(SYS_READDIR):
+      fd = (int)syscall_get_arg(f, 4);
+      file_name = (char *)syscall_get_arg(f, 8);
+      syscall_check_valid_user_pointer(file_name, false, LOAD_PIN);
+      f->eax = syscall_readdir (fd, file_name);
+      syscall_unpin_user_pointer(file_name);
+      break;
+    case(SYS_ISDIR):
+      fd = (int)syscall_get_arg(f, 4);
+      f->eax = syscall_isdir (fd);
+      break;
+    case(SYS_INUMBER):
+      fd = (int)syscall_get_arg(f, 4);
+      f->eax = syscall_inumber (fd);
       break;
     default:
       printf ("syscall not implemented\n");

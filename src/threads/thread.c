@@ -12,9 +12,11 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #include "vm/page.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/cache.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -66,6 +68,7 @@ bool thread_mlfqs;
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
+static void filesys_helper (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
 static void init_thread (struct thread *, const char *name, int priority);
@@ -119,6 +122,9 @@ thread_start (void)
 
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
+#ifdef FILESYS
+  thread_create ("filesys_helper", PRI_MIN, filesys_helper, NULL);
+#endif
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -195,6 +201,7 @@ thread_create (const char *name, int priority,
     {
       t_current->recent_child->child_thread = t;
       t->parent_child_info = t_current->recent_child;
+      t->cwd_sector_number = t_current->cwd_sector_number;
     }
   #endif
 
@@ -496,6 +503,7 @@ init_thread (struct thread *t, const char *name, int priority)
     strlcpy (t->process_name, "", sizeof t->process_name);
     t->exit_status = -1;
   #endif
+  t->cwd_sector_number = ROOT_DIR_SECTOR;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -688,4 +696,52 @@ thread_munmap(struct mmap_info *m_info)
   filesys_lock ();
   file_close(m_info->file_ptr);
   filesys_unlock ();
+}
+
+static void
+filesys_helper (void *aux UNUSED)
+{
+  while (1)
+    {
+      timer_sleep (FILESYS_HELPER_TICKS);
+      cache_write_behind ();
+      cache_read_ahead ();
+    }
+}
+
+void
+thread_set_sector (block_sector_t sector)
+{
+  thread_current ()->cwd_sector_number = sector;
+}
+
+block_sector_t
+thread_get_sector (void)
+{
+  return thread_current ()->cwd_sector_number;
+}
+
+bool 
+thread_find_current_dir (block_sector_t sector)
+{
+  bool found = false;
+  enum intr_level oldlevel = intr_disable ();
+
+  struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if(t->cwd_sector_number == sector)
+        {
+          found = true;
+          break;
+        }
+    }
+  intr_set_level (oldlevel);
+  
+  return found;
 }

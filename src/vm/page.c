@@ -99,6 +99,7 @@ grow_stack(void* uvaddr)
           // Successfully got a physical page install the page
           if (!install_page(new_spte->uvaddr, kpage, true))
             {
+              frame_free_page(new_spte);
               free (new_spte);
               return false;
             }
@@ -173,6 +174,7 @@ page_load_for_stack(struct spage_table_entry *spte)
 
   if (!install_page(spte->uvaddr, kpage, true))
     {
+      frame_free_page(spte);
       hash_delete (&t_current->spage_table, &spte->elem);
       free (spte);
       return false;
@@ -212,7 +214,7 @@ page_load_from_file(struct spage_table_entry *spte)
       filesys_unlock ();
       /* Load this page. */
       filesys_lock ();
-      off_t bytes_read = file_read (spte->file, kpage, page_read_bytes);
+      off_t bytes_read = file_read (spte->file, kpage, page_read_bytes, false);
       filesys_unlock ();
       if (bytes_read != (int) page_read_bytes)
         {
@@ -313,7 +315,7 @@ page_free_vaddr(void *vaddr, size_t write_bytes UNUSED)
           /* Write mmaped file. */
           uint8_t *kpage = frame_get_kpage(spte);
           filesys_lock ();
-          file_write (spte->file, kpage, write_bytes);
+          file_write (spte->file, kpage, write_bytes, false);
           filesys_unlock ();
         }
 

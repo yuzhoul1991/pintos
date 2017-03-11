@@ -2,6 +2,8 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/directory.h"
+#include "filesys/filesys.h"
 
 /* An open file. */
 struct file 
@@ -9,6 +11,7 @@ struct file
     struct inode *inode;        /* File's inode. */
     off_t pos;                  /* Current position. */
     bool deny_write;            /* Has file_deny_write() been called? */
+    struct dir *directory;      /* If file is adirectory, this stores the dir pointer */
   };
 
 /* Opens a file for the given INODE, of which it takes ownership,
@@ -23,6 +26,10 @@ file_open (struct inode *inode)
       file->inode = inode;
       file->pos = 0;
       file->deny_write = false;
+      if(inode_type (inode) == DIR_TYPE)
+        file->directory = dir_open (inode);
+      else
+        file->directory = NULL;
       return file;
     }
   else
@@ -48,7 +55,10 @@ file_close (struct file *file)
   if (file != NULL)
     {
       file_allow_write (file);
-      inode_close (file->inode);
+      if(file->directory != NULL)
+        dir_close (file->directory);
+      else
+        inode_close (file->inode);
       free (file); 
     }
 }
@@ -66,9 +76,9 @@ file_get_inode (struct file *file)
    which may be less than SIZE if end of file is reached.
    Advances FILE's position by the number of bytes read. */
 off_t
-file_read (struct file *file, void *buffer, off_t size) 
+file_read (struct file *file, void *buffer, off_t size, bool meta) 
 {
-  off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos);
+  off_t bytes_read = inode_read_at (file->inode, buffer, size, file->pos, meta);
   file->pos += bytes_read;
   return bytes_read;
 }
@@ -79,9 +89,9 @@ file_read (struct file *file, void *buffer, off_t size)
    which may be less than SIZE if end of file is reached.
    The file's current position is unaffected. */
 off_t
-file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs) 
+file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs, bool meta) 
 {
-  return inode_read_at (file->inode, buffer, size, file_ofs);
+  return inode_read_at (file->inode, buffer, size, file_ofs, meta);
 }
 
 /* Writes SIZE bytes from BUFFER into FILE,
@@ -92,9 +102,9 @@ file_read_at (struct file *file, void *buffer, off_t size, off_t file_ofs)
    not yet implemented.)
    Advances FILE's position by the number of bytes read. */
 off_t
-file_write (struct file *file, const void *buffer, off_t size) 
+file_write (struct file *file, const void *buffer, off_t size, bool meta) 
 {
-  off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos);
+  off_t bytes_written = inode_write_at (file->inode, buffer, size, file->pos, meta);
   file->pos += bytes_written;
   return bytes_written;
 }
@@ -108,9 +118,9 @@ file_write (struct file *file, const void *buffer, off_t size)
    The file's current position is unaffected. */
 off_t
 file_write_at (struct file *file, const void *buffer, off_t size,
-               off_t file_ofs) 
+               off_t file_ofs, bool meta) 
 {
-  return inode_write_at (file->inode, buffer, size, file_ofs);
+  return inode_write_at (file->inode, buffer, size, file_ofs, meta);
 }
 
 /* Prevents write operations on FILE's underlying inode
@@ -165,4 +175,35 @@ file_tell (struct file *file)
 {
   ASSERT (file != NULL);
   return file->pos;
+}
+
+/* Returns the type FILE/DIRECTORY . */
+uint32_t
+file_type (struct file *file) 
+{
+  ASSERT (file != NULL);
+  return inode_type (file->inode);
+}
+
+bool 
+file_isdir (struct file *file)
+{
+  ASSERT (file != NULL);
+  return (inode_type (file->inode) == DIR_TYPE);
+}
+
+int 
+file_inumber (struct file *file)
+{
+  ASSERT (file != NULL);
+  return inode_sector_number (file->inode);
+}
+
+bool 
+file_readdir (struct file *file, char *name)
+{
+  ASSERT (file != NULL);
+  if(file->directory == NULL)
+    return false;
+  return dir_readdir (file->directory, name);
 }

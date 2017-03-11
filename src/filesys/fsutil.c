@@ -34,7 +34,6 @@ void
 fsutil_cat (char **argv)
 {
   const char *file_name = argv[1];
-  
   struct file *file;
   char *buffer;
 
@@ -46,7 +45,7 @@ fsutil_cat (char **argv)
   for (;;) 
     {
       off_t pos = file_tell (file);
-      off_t n = file_read (file, buffer, PGSIZE);
+      off_t n = file_read (file, buffer, PGSIZE, false);
       if (n == 0)
         break;
 
@@ -76,6 +75,7 @@ fsutil_extract (char **argv UNUSED)
 
   struct block *src;
   void *header, *data;
+
 
   /* Allocate buffers. */
   header = malloc (BLOCK_SECTOR_SIZE);
@@ -131,7 +131,7 @@ fsutil_extract (char **argv UNUSED)
                                 ? BLOCK_SECTOR_SIZE
                                 : size);
               block_read (src, sector++, data);
-              if (file_write (dst, data, chunk_size) != chunk_size)
+              if (file_write (dst, data, chunk_size, false) != chunk_size)
                 PANIC ("%s: write failed with %d bytes unwritten",
                        file_name, size);
               size -= chunk_size;
@@ -203,7 +203,7 @@ fsutil_append (char **argv)
       int chunk_size = size > BLOCK_SECTOR_SIZE ? BLOCK_SECTOR_SIZE : size;
       if (sector >= block_size (dst))
         PANIC ("%s: out of space on scratch device", file_name);
-      if (file_read (src, buffer, chunk_size) != chunk_size)
+      if (file_read (src, buffer, chunk_size, false) != chunk_size)
         PANIC ("%s: read failed with %"PROTd" bytes unread", file_name, size);
       memset (buffer + chunk_size, 0, BLOCK_SECTOR_SIZE - chunk_size);
       block_write (dst, sector++, buffer);
