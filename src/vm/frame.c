@@ -81,13 +81,9 @@ frame_eviction(void)
       /* If frame to be evicted is a MMAP then copy to the file it corresponds to. */
       if(evicted_frame->spte->type == SPTE_MMAP)
       {
-          filesys_lock ();
           file_seek (evicted_frame->spte->file, evicted_frame->spte->offset);
-          filesys_unlock ();
           /* Write mmaped file. */
-          filesys_lock ();
           off_t bytes_write = file_write (evicted_frame->spte->file, evicted_frame->kvaddr, PGSIZE, false);
-          filesys_unlock ();
           if (bytes_write != PGSIZE)
             PANIC ("page_free_vaddr: Not writing PGSIZE dirty bytes to file");
         }
@@ -96,7 +92,7 @@ frame_eviction(void)
         /* If frame to be evicted is not MMAP then copy to swap file and store swap's sector */
         evicted_frame->spte->type = SPTE_SWAP;
         evicted_frame->spte->swap_idx = swap_get_idx();
-        
+
         swap_write_idx(evicted_frame->spte->swap_idx, evicted_frame->kvaddr);
       }
     }
@@ -109,7 +105,7 @@ frame_eviction(void)
 
     lock_release(&evicted_frame->spte->entry_lock);
   }
-  
+
   return evicted_frame;
 }
 
@@ -177,7 +173,7 @@ frame_free_page(struct spage_table_entry *spte)
     }
   }
 
-  /* If clock_hand == the element to remove 
+  /* If clock_hand == the element to remove
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F1] ---(point to next)---> clock_hand = [F0]
      [H]->[F0]->[F1]->[F2]->[T] , clock_hand = [F0] ---(wrap around)---> clock_hand = [F2]
   */

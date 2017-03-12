@@ -259,9 +259,7 @@ process_free_file_descriptors(void)
     struct list_elem *e = list_begin(&cur->fd_list);
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
     list_remove(e);
-    filesys_lock ();
     file_close(f_info->file_ptr);
-    filesys_unlock ();
     free(f_info);
     cur->total_fds--;
   }
@@ -403,9 +401,7 @@ process_close_executable_file(void)
   /* Close the executable file */
   if(cur->executable != NULL)
   {
-    filesys_lock ();
     file_close (cur->executable);
-    filesys_unlock ();
   }
 }
 
@@ -538,9 +534,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
   process_activate ();
 
   /* Open executable file. */
-  filesys_lock ();
   file = filesys_open (file_name);
-  filesys_unlock ();
 
   if (file == NULL)
     {
@@ -549,9 +543,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
     }
 
   /* Read and verify executable header. */
-  filesys_lock ();
   off_t bytes_read = file_read (file, &ehdr, sizeof ehdr, false);
-  filesys_unlock ();
   if (bytes_read != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
       || ehdr.e_type != 2
@@ -565,9 +557,7 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
     }
 
   /* Deny write to executable and keep track of executable file to close it at exit */
-  filesys_lock ();
   file_deny_write (file);
-  filesys_unlock ();
   t->executable = file;
 
   /* Read program headers. */
@@ -577,19 +567,13 @@ load (const char *file_name, void (**eip) (void), void **esp, uint32_t argc, cha
       struct Elf32_Phdr phdr;
       off_t file_len;
 
-      filesys_lock ();
       file_len = file_length (file);
-      filesys_unlock ();
 
       if (file_ofs < 0 || file_ofs > file_len)
         goto done;
-      filesys_lock ();
       file_seek (file, file_ofs);
-      filesys_unlock ();
 
-      filesys_lock ();
       bytes_read = file_read (file, &phdr, sizeof phdr, false);
-      filesys_unlock ();
       if (bytes_read != sizeof phdr)
         goto done;
       file_ofs += sizeof phdr;
@@ -665,9 +649,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
     return false;
 
   /* p_offset must point within FILE. */
-  filesys_lock ();
   off_t length = file_length (file);
-  filesys_unlock ();
   if (phdr->p_offset > (Elf32_Off) length)
     return false;
 

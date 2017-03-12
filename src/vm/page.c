@@ -209,13 +209,9 @@ page_load_from_file(struct spage_table_entry *spte)
     }
   else
     {
-      filesys_lock ();
       file_seek (spte->file, spte->offset);
-      filesys_unlock ();
       /* Load this page. */
-      filesys_lock ();
       off_t bytes_read = file_read (spte->file, kpage, page_read_bytes, false);
-      filesys_unlock ();
       if (bytes_read != (int) page_read_bytes)
         {
           frame_free_page (spte);
@@ -309,14 +305,10 @@ page_free_vaddr(void *vaddr, size_t write_bytes UNUSED)
 
         if(pagedir_is_dirty(t->pagedir, vaddr))
         {
-          filesys_lock ();
           file_seek (spte->file, spte->offset);
-          filesys_unlock ();
           /* Write mmaped file. */
           uint8_t *kpage = frame_get_kpage(spte);
-          filesys_lock ();
           file_write (spte->file, kpage, write_bytes, false);
-          filesys_unlock ();
         }
 
       }

@@ -42,7 +42,7 @@ syscall_check_valid_user_pointer(void* ptr, bool is_write, bool load_pin)
     {
       valid &= spte->writable;
     }
-  
+
   if (valid && spte && load_pin)
     {
       bool success = false;
@@ -214,9 +214,7 @@ static bool
 syscall_create (const char *file, unsigned initial_size)
 {
   bool success;
-  filesys_lock ();
   success = filesys_create(file,initial_size);
-  filesys_unlock ();
   return success;
 }
 
@@ -224,9 +222,7 @@ static bool
 syscall_remove (const char *file)
 {
   bool success;
-  filesys_lock ();
   success = filesys_remove(file);
-  filesys_unlock ();
   return success;
 }
 
@@ -237,9 +233,7 @@ syscall_open (const char *file)
   if(f_info == NULL)
     PANIC("file_info malloc failed");
   f_info->fd = 2;
-  filesys_lock ();
   f_info->file_ptr = filesys_open(file);
-  filesys_unlock ();
   if(f_info->file_ptr == NULL)
   {
     free(f_info);
@@ -250,9 +244,7 @@ syscall_open (const char *file)
     /* When a file is opened, add it to current thread's opened files. Also assign a fd */
     struct thread *t = thread_current ();
     f_info->fd = t->total_fds+2;
-    filesys_lock ();
     f_info->type = file_type(f_info->file_ptr);
-    filesys_unlock ();
     t->total_fds++;
     list_push_back (&t->fd_list, &f_info->file_elem);
   }
@@ -270,9 +262,7 @@ syscall_filesize (int fd)
   if(e != NULL)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     int length = file_length(f_info->file_ptr);
-    filesys_unlock ();
     return length;
   }
   else
@@ -295,9 +285,7 @@ syscall_read (int fd, void *buffer, unsigned size)
   if(e != NULL)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     int actual_read = file_read(f_info->file_ptr, buffer, size, false);
-    filesys_unlock ();
     return actual_read;
   }
   else
@@ -323,9 +311,7 @@ syscall_write (int fd, const void *buffer, unsigned size)
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
     if(f_info->type == DIR_TYPE)
       return -1;
-    filesys_lock ();
     int actual_write = file_write(f_info->file_ptr, buffer, size, false);
-    filesys_unlock ();
     return actual_write;
   }
   else
@@ -342,9 +328,7 @@ syscall_seek (int fd, unsigned position)
   if(e != NULL)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     file_seek(f_info->file_ptr, position);
-    filesys_unlock ();
   }
 }
 
@@ -358,9 +342,7 @@ syscall_tell (int fd)
   if(e != NULL)
   {
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     unsigned position = file_tell(f_info->file_ptr);
-    filesys_unlock ();
     return position;
   }
   else
@@ -379,9 +361,7 @@ syscall_close (int fd)
     /* Remove file from current thread's opened files */
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
     list_remove(e);
-    filesys_lock ();
     file_close(f_info->file_ptr);
-    filesys_unlock ();
     free(f_info);
   }
 }
@@ -402,9 +382,7 @@ syscall_mmap (int fd, void *vaddr)
   if(e != NULL)
   {
     f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     length = file_length(f_info->file_ptr);
-    filesys_unlock ();
     if(length == 0)
       return MAP_FAILED;
   }
@@ -422,9 +400,7 @@ syscall_mmap (int fd, void *vaddr)
     m_info->vaddr_start = vaddr;
     m_info->vaddr_end = (pg_round_up(vaddr+length));
     m_info->mmap_size = length;
-    filesys_lock ();
     m_info->file_ptr = file_reopen(f_info->file_ptr);
-    filesys_unlock ();
     m_info->mapid = t->total_mmaps;
     t->total_mmaps++;
     list_push_back (&t->mmap_list, &m_info->mmap_elem);
@@ -474,9 +450,7 @@ static bool
 syscall_mkdir (const char *dir)
 {
   bool success;
-  filesys_lock ();
   success = filesysdir_create(dir);
-  filesys_unlock ();
   return success;
 }
 
@@ -484,9 +458,7 @@ static bool
 syscall_chdir (const char *dir)
 {
   bool success;
-  filesys_lock ();
   success = filesysdir_chdir(dir);
-  filesys_unlock ();
   return success;
 }
 
@@ -502,14 +474,10 @@ syscall_readdir (int fd, char *name)
   {
     /* Find if file_ptr is a Dir */
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     bool isdir = file_isdir(f_info->file_ptr);
-    filesys_unlock ();
     if(isdir)
       {
-        filesys_lock ();
         success = file_readdir(f_info->file_ptr, name);
-        filesys_unlock ();
         return success;
       }
     else
@@ -531,9 +499,7 @@ syscall_isdir (int fd)
   {
     /* Find if file_ptr is a Dir */
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     bool isdir = file_isdir(f_info->file_ptr);
-    filesys_unlock ();
     return isdir;
   }
   else
@@ -551,9 +517,7 @@ syscall_inumber (int fd)
   {
     /* Get the sector number of file_ptr's inode */
     struct file_info *f_info = list_entry (e, struct file_info, file_elem);
-    filesys_lock ();
     int inumber = file_inumber(f_info->file_ptr);
-    filesys_unlock ();
     return inumber;
   }
   else

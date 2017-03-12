@@ -693,9 +693,7 @@ thread_munmap(struct mmap_info *m_info)
       size-=PGSIZE;
     }
 
-  filesys_lock ();
   file_close(m_info->file_ptr);
-  filesys_unlock ();
 }
 
 static void
@@ -721,7 +719,7 @@ thread_get_sector (void)
   return thread_current ()->cwd_sector_number;
 }
 
-bool 
+bool
 thread_find_current_dir (block_sector_t sector)
 {
   bool found = false;
@@ -742,6 +740,6 @@ thread_find_current_dir (block_sector_t sector)
         }
     }
   intr_set_level (oldlevel);
-  
+
   return found;
 }

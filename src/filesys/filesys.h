@@ -17,7 +17,6 @@
 /* Block device that contains the file system. */
 struct block *fs_device;
 
-void filesys_lock (void);
 void filesys_unlock (void);
 void filesys_init (bool format);
 void filesys_done (void);
@@ -25,7 +24,6 @@ bool filesys_create (const char *name, off_t initial_size);
 struct file *filesys_open (const char *name);
 bool filesys_remove (const char *name);
 
-void filesys_lock_init (void);
 bool filesysdir_create (const char *dirname);
 bool filesysdir_chdir (const char *dirname);
 bool filesys_parse_path(const char *name,char *filename, block_sector_t *final_dir_sector);

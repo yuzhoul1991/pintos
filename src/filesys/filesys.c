@@ -13,23 +13,7 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 
-/* Filesys lock */
-static struct lock lock;
-
 static void do_format (void);
-
-/* filesys api for locking and unlocking */
-void
-filesys_lock (void)
-{
-  //lock_acquire (&lock);
-}
-
-void
-filesys_unlock (void)
-{
-  //lock_release (&lock);
-}
 
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
@@ -48,13 +32,6 @@ filesys_init (bool format)
     do_format ();
 
   free_map_open ();
-}
-
-/* initializes filesys_lock */
-void
-filesys_lock_init (void)
-{
-  lock_init (&lock);
 }
 
 /* Shuts down the file system module, writing any unwritten data

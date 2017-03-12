@@ -33,7 +33,7 @@ struct inode_disk
     block_sector_t dbl_indirect_block;      /* Sector numberr of the double indirect block */
     block_sector_t direct_blocks[NUM_DIRECT_BLOCKS];  /* Array for storing the pointers in inode */
     uint32_t type;
-    block_sector_t parent_sector_number;
+    block_sector_t parent_sector_number;    /* Sector number of parent directory */
     uint32_t num_of_valid_entries; // includes files and subdirectories
   };
 
@@ -548,7 +548,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset, boo
     {
       /* Disk sector to read, starting byte offset within sector. */
       block_sector_t sector_idx = byte_to_sector (inode, offset);
-      block_sector_t prefetch_sector_idx = byte_to_sector (inode, offset+BLOCK_SECTOR_SIZE);
+      block_sector_t prefetch_sector_idx = byte_to_sector (inode, offset + BLOCK_SECTOR_SIZE);
 
       if ((int)sector_idx == -1)
         break;
