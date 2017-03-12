@@ -22,12 +22,14 @@ static void do_format (void);
 void
 filesys_lock (void)
 {
+  /* removed file lock as per proj4 spec */
   //lock_acquire (&lock);
 }
 
 void
 filesys_unlock (void)
 {
+  /* removed file unlock as per proj4 spec */
   //lock_release (&lock);
 }
 
