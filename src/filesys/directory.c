@@ -14,7 +14,6 @@ struct dir
   {
     struct inode *inode;                /* Backing store. */
     off_t pos;                          /* Current position. */
-    struct lock lock;                   /* Lock per directory */
   };
 
 /* A single directory entry. */
@@ -25,17 +24,6 @@ struct dir_entry
     bool in_use;                        /* In use or free? */
   };
 
-static void 
-dir_lock (struct dir *dir)
-{
-  lock_acquire (&dir->lock);
-}
-
-static void 
-dir_unlock (struct dir *dir)
-{
-  lock_release (&dir->lock);
-}
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
@@ -54,7 +42,6 @@ dir_open (struct inode *inode)
     {
       dir->inode = inode;
       dir->pos = 0;
-      lock_init (&dir->lock);
       return dir;
     }
   else
@@ -148,12 +135,12 @@ dir_lookup (struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
   
-  dir_lock (dir);
+  inode_dir_lock (dir->inode);
   if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
     *inode = NULL;
-  dir_unlock (dir);
+  inode_dir_unlock (dir->inode);
 
   return *inode != NULL;
 }
@@ -179,7 +166,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
     return false;
 
   /* Lock the directory */
-  dir_lock (dir);
+  inode_dir_lock (dir->inode);
 
   /* Check that NAME is not in use. */
   if (lookup (dir, name, NULL, NULL))
@@ -206,7 +193,7 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
     inode_increment_valid_entries (dir->inode);
 
  done:
-  dir_unlock (dir);
+  inode_dir_unlock (dir->inode);
   return success;
 }
 
@@ -225,7 +212,7 @@ dir_remove (struct dir *dir, const char *name)
   ASSERT (name != NULL);
 
   /* Lock the directory */
-  dir_lock (dir);
+  inode_dir_lock (dir->inode);
 
   /* Find directory entry. */
   if (!lookup (dir, name, &e, &ofs))
@@ -243,7 +230,7 @@ dir_remove (struct dir *dir, const char *name)
         goto done;
       if(inode_get_valid_entries (inode) != 0)
         goto done;
-      if(inode_get_open_cnt (inode) > 2)
+      if(inode_get_open_cnt (inode) > 1)
         goto done;
       if(thread_find_current_dir (inode_sector_number (inode)))
         goto done;
@@ -262,7 +249,7 @@ dir_remove (struct dir *dir, const char *name)
  done:
   inode_close (inode);
   /* Unlock the directory */
-  dir_unlock (dir);
+  inode_dir_unlock (dir->inode);
   return success;
 }
 
