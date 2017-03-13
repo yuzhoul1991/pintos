@@ -8,9 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Yuzhou Liu          <yuzhoul@stanford.edu>
+Haran Chidambaram   <haranpc@stanford.edu>
+Jayadev Velagandula <jayadevv@stanford.edu>
 
 ---- PRELIMINARIES ----
 
@@ -30,13 +30,43 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct inode_disk
+  {
+    off_t length;                           /* File size in bytes. */
+    unsigned magic;                         /* Magic number. */
+    uint32_t unused[109];                   /* Not used. */
+    block_sector_t indirect_block;          /* Sector number of the indirect block */
+    block_sector_t dbl_indirect_block;      /* Sector number of the double indirect block */
+    block_sector_t direct_blocks[NUM_DIRECT_BLOCKS];  /* Array for storing the pointers in inode */
+    uint32_t type;                          /* type either dir or file type
+    block_sector_t parent_sector_number;    /* Sector number of parent directory */
+    uint32_t num_of_valid_entries; // includes files and subdirectories
+  };
+
+// Following struct represents an indirect block
+// that stores BLOCK_ENTRY_NUM number of sector numbers
+struct indirect_block
+  {
+    block_sector_t blocks[BLOCK_ENTRY_NUM];
+  };
+
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+We have 12 direct blocks, 1 indirect block and 1 double indirect block.
+
+12 * 512 + 1 * 128 * 512 + 1 * 128 * 128 * 512 = 8MB
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+
+We use a inode_lock that in the case of having to extend a file in inode_write_at
+function, the lock is acquired before the inode_grow function is called. The inode
+under growing is exclusively accessed by the current process until growing is done
+and the change in inod_disk is written to the buffer cache.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -45,12 +75,31 @@ FirstName LastName <email@domain.example>
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 
+We use a inode_lock that is a memeber of the in memory inode struct.
+The lock is acquired in case of a inode_grow is needed in write. The lock is held
+until the grow is finished and updated inode_disk is persisted to buffer cache.
+The corresponding reader will try to acquire the lock in the byte_to_sector function
+where the byte offset of the file represented by the inode is translated to disk sector
+number. In the byte_to_sector function, the inode_disk struct is retrieved from
+the buffer cache as the inode struct has the sector number to its corresponding
+inode_disk. Since lock is scquired and released around the cache read operation
+to get the inode_disk, the inode_disk struct read from cache is going to either have
+an already extended and written sector by the writer, or the extend and writing has not
+happened yet. Thus avoiding the above mentioned race condition.
+
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
 >> or vice versa.  That is, many processes reading from a file cannot
 >> prevent forever another process from writing the file, and many
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
+
+The inode lock we have for each inode is only acquired by the writer when a file is
+extended or in other words, inode_grow is needed. It does not lock the inode and provide
+exclusive access to one thread in any write. On the other hand, the reader only acquire lock
+when the byte_to_sector translation happens and the locking only locks a buffer cache read
+to retrieve the corresponding inode_disk from the cache. Therefore the period of locking is
+very short and bounded which eliminates starvation.
 
 ---- RATIONALE ----
 
