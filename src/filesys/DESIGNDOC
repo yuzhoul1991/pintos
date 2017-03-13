@@ -17,6 +17,8 @@ Jayadev Velagandula <jayadevv@stanford.edu>
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
 
+We implemented this project on top of project3
+
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
@@ -118,10 +120,74 @@ very short and bounded which eliminates starvation.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct dir 
+  {
+    struct lock dir_lock;                   /* Lock per directory */   
+  };
+
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+struct inode_disk
+  {
+    uint32_t type;                     /* Indicates FILE_TYPE or DIR_TYPE */            
+    block_sector_t parent_sector_number; /* Represents parent directories 
+                                         sector number */  
+    uint32_t num_of_valid_entries; /* includes files and subdirectories */           
+  };
+
+
+struct thread
+  {
+     /* for directories */
+     block_sector_t cwd_sector_number; /* current working directory sector number 
+                                      can be used for figuringout inode */
+  }
+
+/* An open file. */
+struct file 
+  {
+    struct dir *directory;      /* If file is adirectory, this stores the dir 
+                                 pointer */
+  };
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+
+In filesysdir_create(), filesysdir_chdir(), filesys_create(), filesys_open() and 
+filesys_close() we call the following function first
+bool filesys_parse_path(const char *name,char *filename, 
+                      block_sector_t *final_dir_sector)
+where name:    - Input name
+      filename - Output name which will used further in the above functions
+      final_dir_sector - The sector to create/open/remove files.
+
+The function is used to traverse relative or absolute path. At the start of the 
+function final_dir_sector is equal to the the current thread working directory's 
+sector indicated by struct thread's cwd_sector_number. The funtion's behaviour 
+is best elaborated with examples before.  
+Eg1: name: a/b/c (relative path)
+     We seperate strings based on delimiter "/" and get the number of strings 
+     we get. Here they are "a","b","c"
+     Iteration 1: Check if current directory(final_dir_sector is used in dir_open) 
+      has "a"and it is a directory. If so update final_dir_sector to "a"'s sector.  
+     Iteration 2: Check if current directory(final_dir_sector is used in dir_open) 
+     has "b"and it is a directory. If so update final_dir_sector to "b"'s sector.  
+     Iteration 3: "c" is the last string. So we copy filename to "c" and exit.
+     After exiting the function, filename = "c" and final_sector_number = Dir of 
+     "b". So we can create/remove/open "c" in "b".  
+Eg2: name: /a/b/c (absolute path)
+     Before seperating things, if name[0] = "/", then we initilaize 
+     final_dir_sector to ROOT_DIR_SECTOR. Then same steps as before 
+     happens
+Eg3: name: a (relative path)
+     We seperate strings based on delimiter "/" and get the number of strings we 
+     get. Here they are "a"
+     Iteration 1: "a" is the last string. So we copy filename to "a" and exit.
+     After exiting the function, filename = "a" and final_sector_number = current 
+     directory of thread. So we can create/remove/open "a" in current directory.  
+  
 
 ---- SYNCHRONIZATION ----
 
@@ -130,15 +196,50 @@ very short and bounded which eliminates starvation.
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+The inode struct has a dir_lock associated with it as mentioned above.
+This dir_lock is used for synchronization. Every one of these functions: 
+dir_lookup (), dir_add (), dir_remove () locks and unlocks the dir->inode at 
+the beginning and the end. This achieves directory synchronization
+Eg1: If 2 processes try to remove a single file, the first process would lock 
+the parent directory of the file and would release it only after removing the 
+file. During this time, the 2nd process waits and when it actually does remove, 
+it wont find the file and so it would exit.
+Eg2: If 2 processes try to create the same file, the first process would lock 
+the parent directory of the file and would release it only after creating the 
+file. During this time, the 2nd process waits and when it actually does create, 
+it would find the file existing already and so it would exit.
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+Out implementation does not allow a directory to be removed if it open or if
+it is a process's current working directory. 
+In dir_remove (), when we pick a directory entry to be removed, we know the inode 
+of the entry. From the inode_disk->type (mentioned above), we would know if the 
+entry to be removed is itlsef a directory or not.
+-  If the entry is a directory and its inode open count is more than 1, we 
+   prevent its removal. 
+
+The inode_disk associated with an inode also stores the number of valid entries 
+it has. They are assigned to 0 when we create the directory. When we dir_add () 
+to this directory, the number is incremented. When we dir_remove () to this 
+directory, the number is decremented.
+-  If the entry is a directory and its inode_disk->num_of_valid_entries is not 0, 
+   we prevent its removal. 
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+The thread struct has cwd_sector_number which represents current working directory 
+of a process. Whenever we do "cd", we update the cwd_sector_number.  
+This is easier to implement as we dont have to
+protect it with any synchronization primitives. Also when a child process is created, 
+it can easily initilaize its cwd_sector_number from its parent thread's 
+cwd_sector_number in thread_create ().
 
 			     BUFFER CACHE
 			     ============
@@ -149,14 +250,110 @@ very short and bounded which eliminates starvation.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct cache_entry
+  {
+    uint8_t* data;                 /* BLOCK SIZED DATA */
+    block_sector_t old_sector;     /* When evicting this block, sector which is being evicted */
+    block_sector_t sector;         /* sector currently held by cache block */
+    uint32_t cache_block;          /* cache block number corresponding to bitmap */
+    uint32_t type;                 /* Indicates whether it is a meta data or real data */
+    bool dirty;                    /* Indicates whether the data is dirty */
+    bool accessed;                 /* Indicates if the sector has been accessed since 
+                                     last eviction attempt */
+    bool meta_retry;               /* If true for a meta data, then give an additional 
+                                      chance rather than evicting */
+    bool entry_blocked;            /* Indicates if entry is blocked for 
+                                       reading/writing */
+    bool uninitialized;            /* Indicates if the cache data was uninitialized. 
+                                       Used only by free_map_entry */
+    uint32_t pin;                  /* if pinned, cache block cannot be evicted */
+    struct lock entry_lock;        /* lock per cache entry */
+    struct condition entry_cond;   /* lock per cache entry */
+    struct list_elem elem;         /* list element to add to cache_list */
+    
+  };
+
+struct cache_read_ahead_entry
+  {
+    block_sector_t sector;         /* sector currently held by prefetch entry */
+    uint32_t type;                 /* Indicates whether it is a meta data or real data */
+    struct list_elem elem;         /* list element to add to prefetch_list */
+    
+  };
+
+
+struct list cache_list;             /* List of all valid cache blocks */
+struct list_elem *cache_hand;       /* cache_hand points to an element in cache_list 
+                                    and is used for clock algorithm */
+struct lock cache_lock;             /* lock used by common variables of cache */
+struct bitmap *cache_bitmap;        /* Bitmap which holds bits = CACHE_ENTRIES */
+uint32_t total_sectors;
+struct cache_entry *free_map_entry; /* Special cache entry for free_map*/ 
+
+struct list cache_read_ahead_list;  /* List of all valid cache_read_ahead entries */
+struct lock cache_read_ahead_lock;  /* lock used by common variables of cache_read_ahead */
+
+
+
 ---- ALGORITHMS ----
 
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+We have a bitmap of free cache blocks. 
+
+We maintain a cache_list which is a list of cache blocks in use. Everytime we miss in 
+cache, we try to find a block,we try to get a free cache block from cache_bitmap 
+and add it to cache_list. Only when bitmap doesn't return a cache block, eviction kicks in.
+
+We maintain a cache_hand pointer which points to an element in cache_block. On 
+initialization, cache_hand is NULL.Everytime we insert a cache_block from bitmap, 
+we insert it next to current cache_hand and move the cache_hand to point to inserted element.
+Eg: Trying to insert [B1] to [H]->[B0]->[T], cache_hand = [B0]
+    After insertion:         [H]->[B0]->[B1]->[T], cache_hand = [B1]
+
+When we release a cache_block(which happens only during system shutdown), we return 
+the cache block to bitmap.If cache_hand points to the block to remove, move 
+cache_hand to previous element/block.
+Eg:  If cache_hand == the element to remove
+     [H]->[B0]->[B1]->[B2]->[T] , cache_hand = [B1] ---(point to next)---> cache_hand = [B0]
+     [H]->[B0]->[B1]->[B2]->[T] , cache_hand = [B0] ---(wrap around)---> cache_hand = [B2]
+
+cache_entry also has a type and boolean value called meta_retry. When we access a 
+meta data, we will update the type and set this value. 
+
+Coming to the actual cache block choosen during eviction, we start from element to next of 
+cache_hand(From the insertion example above, we
+would start from [B0] thus implementing LRU) and go through the list in forward 
+direction similar to "clocking".
+- If we find a block which was pinned, we go to the next block.
+- If we find a block which was META type and has meta_retry SET, then we clear 
+meta_retry and continue to next block. This gives a third chance to META 
+data(in addition to accessed).
+- If we find a block which was accessed, then we clear accessed and continue to 
+next block. This gives a second chance to accessed.
+- If none of the above cases are true, the block is chosen for eviction. 
+
+
+
 >> C3: Describe your implementation of write-behind.
 
+During start of the program, we start a "filesys_helper" thread which does a 
+timer sleep for 100 ticks.
+Timer sleep uses the alarm clock logic so we dont do busy waiting. After the 
+timer tick, we implement write-back. We start from cache_hand(clock_hand) and 
+find the first dirty block and we write it back. if we reach 64 blocks without 
+finding a dirty block, we exit the function. 
+ 
+
 >> C4: Describe your implementation of read-ahead.
+
+Every time we do a inode read, we pass the next sector to read-ahead. During read, 
+we create a cache_read_ahead_entry and add it to cache_read_ahead_list at the back. 
+In the filesys_handler, after write_behind, we do read-ahead.
+In read-ahead, we pop the front entry from cache_read_ahead_list. If that sector is 
+not a hit in cache, we read the sector into cache. We implement eviction as before 
+if no empty cache block is available. 
 
 ---- SYNCHRONIZATION ----
 
@@ -164,13 +361,51 @@ very short and bounded which eliminates starvation.
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+As indicated above, we dont pick a cache block for eviction if the block is pinned. 
+We use pinning to prevent the above case. Whenever we have a cache read or write, 
+we traverse the cache_block_list(we acquire cache_lock) and look for hit or miss. 
+After we get a cache_block for read or write, we pin the cache_block before 
+releasing cache_lock. And we unpin the block only after read or write is complete. 
+This way after cache_lock is released, if any other request tries to evict the 
+block, it would see that it is pinned thus preventing race condition. 
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+In cache_entry, we have 2 variables, sector and old_sector. Old_sector is always 
+MAX_SECTORS. 
+Eg: Read to sector 2 tries to replace sector 1 which is dirty.
+When we pick a cache_block 1 for evicting(we have acquired cache_lock), 
+we transfer sector to old_sector when the evicting block is dirty, so old_sector=1. 
+We update the sector to 2 and release the lock. 
+If we have a read or write to sector 1, 
+ - we will acquire cache_lock.
+ - we will try to get a hit by looking into sector of all cache blocks.
+ - we will miss. Before we do eviction, we will try to see if we hit in old_sector.
+ - we will hit in old_sector. We will release cache_lock and go back to 1st step and retry.
+After we write back sector 1, we update old_sector to MAX_SECTORS. Thus the other 
+looping access would stop looping and implement eviction to bring back sector 1.  
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+ 
+Buffer caching: With a sector size of say 512 Bytes. If a workload reads/writes 8 
+Bytes of file at a time, we wouldnt do a filesystem read/write everytime but do 
+read/write on cache block. We save almost 64 access to that sector. If it is a 
+write, Only when eviction happens we need to write back.
+
+Read-ahead: In the same example above, if we read 8 bytes of a file at a time and 
+if the file size is multiple sectors long, the first read to one sector would try 
+to read-ahead next sector. By the time we read the next sector, there is great 
+possibility that it would be in cache already. This saves the miss latency 
+for this workload.
+
+Write-behind: If a process has huge memory stamp and most of it is writing then 
+we would have heavy eviction happening and there is a great possibility of picking 
+a dirty block for eviction. If we implement write ahead, it would be easier to 
+find a clean block for eviction thus saving the time to write back.
 
 			   SURVEY QUESTIONS
 			   ================

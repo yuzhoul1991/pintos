@@ -13,34 +13,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-#define NUM_DIRECT_BLOCKS 12
-#define DIRECT_CAP (NUM_DIRECT_BLOCKS * BLOCK_SECTOR_SIZE)
-#define INDIRECT_CAP (DIRECT_CAP + BLOCK_ENTRY_NUM * BLOCK_SECTOR_SIZE)
-#define DBL_INDIRECT_CAP (INDIRECT_CAP + BLOCK_ENTRY_NUM * BLOCK_ENTRY_NUM * BLOCK_SECTOR_SIZE)
-
-#define BLOCK_ENTRY_NUM (BLOCK_SECTOR_SIZE / 4)
-
 static char zeros[BLOCK_SECTOR_SIZE];
-
-/* On-disk inode.
-   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
-  {
-    off_t length;                           /* File size in bytes. */
-    unsigned magic;                         /* Magic number. */
-    uint32_t unused[109];                   /* Not used. */
-    block_sector_t indirect_block;          /* Sector number of the indirect block */
-    block_sector_t dbl_indirect_block;      /* Sector numberr of the double indirect block */
-    block_sector_t direct_blocks[NUM_DIRECT_BLOCKS];  /* Array for storing the pointers in inode */
-    uint32_t type;
-    block_sector_t parent_sector_number;    /* Sector number of parent directory */
-    uint32_t num_of_valid_entries; // includes files and subdirectories
-  };
-
-struct indirect_block
-  {
-    block_sector_t blocks[BLOCK_ENTRY_NUM];
-  };
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -50,16 +23,6 @@ bytes_to_sectors (off_t size)
   return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
 }
 
-/* In-memory inode. */
-struct inode
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    block_sector_t sector;              /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct lock lock;             /* indoe lock */
-  };
 
 static off_t
 get_direct_block_index (off_t pos)
@@ -115,6 +78,18 @@ static void
 inode_unlock (struct inode *inode)
 {
   lock_release (&inode->lock);
+}
+
+void
+inode_dir_lock (struct inode *inode)
+{
+  lock_acquire (&inode->dir_lock);
+}
+
+void
+inode_dir_unlock (struct inode *inode)
+{
+  lock_release (&inode->dir_lock);
 }
 
 /* Returns the block device sector that contains byte offset POS
@@ -469,6 +444,7 @@ inode_open (block_sector_t sector)
   inode->deny_write_cnt = 0;
   inode->removed = false;
   lock_init (&inode->lock);
+  lock_init (&inode->dir_lock);
   lock_acquire (&open_inodes_lock);
   list_push_front (&open_inodes, &inode->elem);
   lock_release (&open_inodes_lock);
