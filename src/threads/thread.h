@@ -156,6 +156,10 @@ struct thread
     struct hash spage_table;              /* Per process suplimental page table */
 #endif
 
+    struct list_elem *cond_waiter_elem;       /* When thread waits on a condition, this points to list_elem of thread's semaphore_elem */
+
+    int64_t end_tick;                   /*Absolute tick value for threads which run timer_sleep to come out of sleep */
+
      /* for directories */
      block_sector_t cwd_sector_number; //  current working directory sector number can be used for figuringout inode
 
@@ -206,5 +210,8 @@ void thread_munmap(struct mmap_info *m_info);
 void thread_set_sector (block_sector_t sector);
 block_sector_t thread_get_sector (void);
 bool thread_find_current_dir (block_sector_t sector);
+void thread_set_end_tick (int64_t ticks);
+void thread_push_timer_sleep_waitlist (void);
+void thread_check_timer_sleep_waitlist (void);
 
 #endif /* threads/thread.h */

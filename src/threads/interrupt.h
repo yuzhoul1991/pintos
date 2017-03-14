@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Interrupts on or off? */
-enum intr_level 
+enum intr_level
   {
     INTR_OFF,             /* Interrupts disabled. */
     INTR_ON               /* Interrupts enabled. */
@@ -62,6 +62,7 @@ void intr_register_ext (uint8_t vec, intr_handler_func *, const char *name);
 void intr_register_int (uint8_t vec, int dpl, enum intr_level,
                         intr_handler_func *, const char *name);
 bool intr_context (void);
+void intr_check_timer_sleep_waitlist_on_return (void);
 void intr_yield_on_return (void);
 
 void intr_dump_frame (const struct intr_frame *);

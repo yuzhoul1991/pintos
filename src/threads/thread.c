@@ -30,6 +30,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of processes in which run timer_sleep() and are waiting in THREAD_BLOCKED state because they have not slept for required ticks*/
+static struct list timer_sleep_waitlist;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -99,6 +102,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&timer_sleep_waitlist);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -127,6 +131,62 @@ thread_start (void)
 #endif
 }
 
+/* Sets end_tick value for current thread */
+void
+thread_set_end_tick (int64_t ticks)
+{
+  thread_current ()->end_tick = ticks;
+}
+
+/* Checks if new element's end_tick value is lesser than old element. Used for inserting in a list*/
+static bool
+thread_tick_less(const struct list_elem * new_element, const struct list_elem * old_element, void *aux UNUSED)
+{
+ struct thread * new_thread = list_entry (new_element, struct thread, elem);
+ struct thread * old_thread = list_entry (old_element, struct thread, elem);
+
+ return (new_thread->end_tick < old_thread->end_tick);
+}
+
+
+/* Pushes current thread into timer_sleep_waitlist */
+void
+thread_push_timer_sleep_waitlist (void)
+{
+  ASSERT (!intr_context ());
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  /* Sort the threads based on remaining timer ticks it needs to wait for.*/
+  list_insert_ordered (&timer_sleep_waitlist, &thread_current ()->elem, thread_tick_less, NULL);
+}
+
+
+/* Check if we can wakeup any thread from timer_sleep_waitlist */
+void
+thread_check_timer_sleep_waitlist (void)
+{
+  ASSERT (!intr_context ());
+
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  int64_t curr_tick = timer_ticks();
+
+  while(!list_empty (&timer_sleep_waitlist))
+  {
+      struct list_elem * list_elem_iter = list_begin(&timer_sleep_waitlist);
+      struct thread * thread_iter = list_entry (list_elem_iter, struct thread, elem);
+      if (curr_tick >= thread_iter->end_tick)
+      {
+        list_remove(list_elem_iter);
+        thread_unblock (thread_iter);
+      }
+      else
+        break;
+  }
+  intr_set_level (old_level);
+
+}
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -143,6 +203,9 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+
+    /* Enforce checking timer_sleep_waitlist for threads to unblock */
+    intr_check_timer_sleep_waitlist_on_return ();
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -503,6 +566,7 @@ init_thread (struct thread *t, const char *name, int priority)
     strlcpy (t->process_name, "", sizeof t->process_name);
     t->exit_status = -1;
   #endif
+  t->end_tick = 0;
   t->cwd_sector_number = ROOT_DIR_SECTOR;
 
   old_level = intr_disable ();

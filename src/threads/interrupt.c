@@ -47,6 +47,7 @@ static unsigned int unexpected_cnt[INTR_CNT];
 static bool in_external_intr;   /* Are we processing an external interrupt? */
 static bool yield_on_return;    /* Should we yield on interrupt return? */
 
+static bool check_timer_sleep_waitlist_on_return;   /* Should we check timer_sleep_waitlist upon return? */
 /* Programmable Interrupt Controller helpers. */
 static void pic_init (void);
 static void pic_end_of_interrupt (int irq);
@@ -62,7 +63,7 @@ static void unexpected_interrupt (const struct intr_frame *);
 
 /* Returns the current interrupt status. */
 enum intr_level
-intr_get_level (void) 
+intr_get_level (void)
 {
   uint32_t flags;
 
@@ -78,14 +79,14 @@ intr_get_level (void)
 /* Enables or disables interrupts as specified by LEVEL and
    returns the previous interrupt status. */
 enum intr_level
-intr_set_level (enum intr_level level) 
+intr_set_level (enum intr_level level)
 {
   return level == INTR_ON ? intr_enable () : intr_disable ();
 }
 
 /* Enables interrupts and returns the previous interrupt status. */
 enum intr_level
-intr_enable (void) 
+intr_enable (void)
 {
   enum intr_level old_level = intr_get_level ();
   ASSERT (!intr_context ());
@@ -99,9 +100,20 @@ intr_enable (void)
   return old_level;
 }
 
+/* During processing of an external interrupt, directs the
+   interrupt handler to check for potential ready threads in timer_sleep_wait_list just before
+   returning from the interrupt.  May not be called at any other
+   time. */
+void
+intr_check_timer_sleep_waitlist_on_return (void)
+{
+  ASSERT (intr_context ());
+  check_timer_sleep_waitlist_on_return = true;
+}
+
 /* Disables interrupts and returns the previous interrupt status. */
 enum intr_level
-intr_disable (void) 
+intr_disable (void)
 {
   enum intr_level old_level = intr_get_level ();
 
@@ -179,7 +191,7 @@ register_handler (uint8_t vec_no, int dpl, enum intr_level level,
    execute with interrupts disabled. */
 void
 intr_register_ext (uint8_t vec_no, intr_handler_func *handler,
-                   const char *name) 
+                   const char *name)
 {
   ASSERT (vec_no >= 0x20 && vec_no <= 0x2f);
   register_handler (vec_no, 0, INTR_OFF, handler, name);
@@ -209,7 +221,7 @@ intr_register_int (uint8_t vec_no, int dpl, enum intr_level level,
 /* Returns true during processing of an external interrupt
    and false at all other times. */
 bool
-intr_context (void) 
+intr_context (void)
 {
   return in_external_intr;
 }
@@ -219,7 +231,7 @@ intr_context (void)
    returning from the interrupt.  May not be called at any other
    time. */
 void
-intr_yield_on_return (void) 
+intr_yield_on_return (void)
 {
   ASSERT (intr_context ());
   yield_on_return = true;
@@ -262,7 +274,7 @@ pic_init (void)
    If we don't acknowledge the IRQ, it will never be delivered to
    us again, so this is important.  */
 static void
-pic_end_of_interrupt (int irq) 
+pic_end_of_interrupt (int irq)
 {
   ASSERT (irq >= 0x20 && irq < 0x30);
 
@@ -342,7 +354,7 @@ make_idtr_operand (uint16_t limit, void *base)
    intr-stubs.S.  FRAME describes the interrupt and the
    interrupted thread's registers. */
 void
-intr_handler (struct intr_frame *frame) 
+intr_handler (struct intr_frame *frame)
 {
   bool external;
   intr_handler_func *handler;
@@ -352,13 +364,14 @@ intr_handler (struct intr_frame *frame)
      and they need to be acknowledged on the PIC (see below).
      An external interrupt handler cannot sleep. */
   external = frame->vec_no >= 0x20 && frame->vec_no < 0x30;
-  if (external) 
+  if (external)
     {
       ASSERT (intr_get_level () == INTR_OFF);
       ASSERT (!intr_context ());
 
       in_external_intr = true;
       yield_on_return = false;
+      check_timer_sleep_waitlist_on_return = false;
     }
 
   /* Invoke the interrupt's handler. */
@@ -375,16 +388,18 @@ intr_handler (struct intr_frame *frame)
     unexpected_interrupt (frame);
 
   /* Complete the processing of an external interrupt. */
-  if (external) 
+  if (external)
     {
       ASSERT (intr_get_level () == INTR_OFF);
       ASSERT (intr_context ());
 
       in_external_intr = false;
-      pic_end_of_interrupt (frame->vec_no); 
+      pic_end_of_interrupt (frame->vec_no);
+      if(check_timer_sleep_waitlist_on_return)
+        thread_check_timer_sleep_waitlist();
 
-      if (yield_on_return) 
-        thread_yield (); 
+      if (yield_on_return)
+        thread_yield ();
     }
 }
 
@@ -408,7 +423,7 @@ unexpected_interrupt (const struct intr_frame *f)
 
 /* Dumps interrupt frame F to the console, for debugging. */
 void
-intr_dump_frame (const struct intr_frame *f) 
+intr_dump_frame (const struct intr_frame *f)
 {
   uint32_t cr2;
 
@@ -432,7 +447,7 @@ intr_dump_frame (const struct intr_frame *f)
 
 /* Returns the name of interrupt VEC. */
 const char *
-intr_name (uint8_t vec) 
+intr_name (uint8_t vec)
 {
   return intr_names[vec];
 }
