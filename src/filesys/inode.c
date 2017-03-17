@@ -62,7 +62,7 @@ block_get_sector_num(block_sector_t indirect_block_sector, off_t index)
   if (this_block == NULL)
     return -1;
 
-  cache_read_write (READ, indirect_block_sector, indirect_block_sector+1, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, indirect_block_sector, total_sectors, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
   off_t sector_num = this_block->blocks[index];
   free (this_block);
   return sector_num;
@@ -106,7 +106,7 @@ byte_to_sector (struct inode *inode, off_t pos)
   block_sector_t sector_num = -1;
 
   inode_lock (inode);
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
   inode_unlock (inode);
 
   if (pos > inode_disk->length)
@@ -152,14 +152,14 @@ inode_create_new_block (uint32_t fill)
   if (free_map_allocate (1, &sector))
     {
       if (fill == 0)
-        cache_read_write (WRITE, sector, sector+1, META_DATA, zeros, 0, 0, 0, BLOCK_SECTOR_SIZE);
+        cache_read_write (WRITE, sector, 0, META_DATA, zeros, 0, 0, 0, BLOCK_SECTOR_SIZE);
       else
         {
           char block_fill[BLOCK_SECTOR_SIZE];
           int i;
           for (i = 0; i < BLOCK_SECTOR_SIZE; i++)
             block_fill[i] = fill;
-          cache_read_write (WRITE, sector, sector+1, META_DATA, block_fill, 0, 0, 0, BLOCK_SECTOR_SIZE);
+          cache_read_write (WRITE, sector, 0, META_DATA, block_fill, 0, 0, 0, BLOCK_SECTOR_SIZE);
         }
       return sector;
     }
@@ -177,7 +177,7 @@ inode_extend_indirect_block (block_sector_t sector, off_t index)
   if (this_block == NULL)
     return false;
 
-  cache_read_write (READ, sector, sector+1, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, sector, total_sectors, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
   ASSERT ((int)this_block->blocks[index] == -1);
   this_block->blocks[index] = inode_create_new_block(0);
   if ((int)this_block->blocks[index] == -1)
@@ -185,7 +185,7 @@ inode_extend_indirect_block (block_sector_t sector, off_t index)
       free (this_block);
       return false;
     }
-  cache_read_write (WRITE, sector, sector+1, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (WRITE, sector, 0, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
   free (this_block);
   return true;
 }
@@ -202,7 +202,7 @@ inode_extend_dbl_indirect_block (block_sector_t sector, off_t l1_idx, off_t l2_i
     return false;
 
   bool need_write_back = false;
-  cache_read_write (READ, sector, sector+1, META_DATA, layer1_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, sector, total_sectors, META_DATA, layer1_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
 
   if ((int)layer1_block->blocks[l1_idx] == -1)
     {
@@ -213,7 +213,7 @@ inode_extend_dbl_indirect_block (block_sector_t sector, off_t l1_idx, off_t l2_i
   if (inode_extend_indirect_block (layer1_block->blocks[l1_idx], l2_idx))
     {
       if (need_write_back)
-        cache_read_write (WRITE, sector, sector+1, META_DATA, layer1_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+        cache_read_write (WRITE, sector, 0, META_DATA, layer1_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
       free (layer1_block);
       return true;
     }
@@ -297,7 +297,7 @@ free_indirect_block (block_sector_t sector)
   if (this_block == NULL)
     PANIC ("Unable to malloc indirect_block in free_indirect_block\n");
 
-  cache_read_write (READ, sector, sector+1, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, sector, total_sectors, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
   int i;
   for (i = 0; i < BLOCK_ENTRY_NUM; i++)
     if ((int)this_block->blocks[i] != -1)
@@ -318,7 +318,7 @@ free_dbl_indirect_block (block_sector_t sector)
   if (this_block == NULL)
     PANIC ("Unable to malloc indirect_block in free_indirect_block\n");
 
-  cache_read_write (READ, sector, sector+1, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, sector, total_sectors, META_DATA, this_block, 0, 0, 0, BLOCK_SECTOR_SIZE);
   int i;
   for (i = 0; i < BLOCK_ENTRY_NUM; i++)
     if ((int)this_block->blocks[i] != -1)
@@ -339,7 +339,7 @@ inode_free (struct inode *inode)
   if (inode_disk == NULL)
     PANIC ("Unable to malloc inode_disk in inode_free\n");
 
-  cache_read_write (READ, inode_disk_sector, inode_disk_sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode_disk_sector, total_sectors, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
   for (i = 0; i < NUM_DIRECT_BLOCKS; i++)
     if ((int)inode_disk->direct_blocks[i] != -1)
       free_map_release (inode_disk->direct_blocks[i], 1);
@@ -400,7 +400,7 @@ inode_create (block_sector_t sector, off_t length, uint32_t type, block_sector_t
           return false;
         }
 
-      cache_read_write (WRITE, sector, sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+      cache_read_write (WRITE, sector, 0, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
       free (inode_disk);
     }
   return true;
@@ -574,7 +574,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   struct inode_disk *inode_disk = NULL;
   inode_disk = calloc (1, sizeof *inode_disk);
 
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
 
   off_t new_length = size + offset;
   if (new_length > inode_length (inode))
@@ -587,7 +587,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
           return 0;
         }
     // write to cache latest inode since it had grown
-      cache_read_write (WRITE, inode->sector, inode->sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+      cache_read_write (WRITE, inode->sector, 0, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
       inode_unlock (inode);
     }
 
@@ -616,7 +616,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     }
 
   // write back modified disk inode to disk
-  cache_read_write (WRITE, inode->sector, inode->sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (WRITE, inode->sector, 0, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
   free (inode_disk);
   return bytes_written;
 }
@@ -651,7 +651,7 @@ inode_length (const struct inode *inode)
 {
   struct inode_disk *inode_disk = NULL;
   inode_disk = calloc (1, sizeof *inode_disk);
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, inode_disk, 0, 0, 0, BLOCK_SECTOR_SIZE);
   off_t length = 0;
   length = inode_disk->length;
   free (inode_disk);
@@ -664,7 +664,7 @@ inode_type (const struct inode *inode)
 {
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
   uint32_t type = disk_inode->type;
   free (disk_inode);
   return type;
@@ -676,7 +676,7 @@ inode_increment_valid_entries (const struct inode *inode)
 
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
   disk_inode->num_of_valid_entries++;
   cache_read_write (WRITE, inode->sector, 0, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
   free (disk_inode);
@@ -707,7 +707,7 @@ inode_get_valid_entries (const struct inode *inode)
 
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
 
   uint32_t valid_entries = disk_inode->num_of_valid_entries;
   free (disk_inode);
@@ -720,7 +720,7 @@ inode_parent_sector_number (const struct inode *inode)
 {
   struct inode_disk *disk_inode = NULL;
   disk_inode = calloc (1, sizeof *disk_inode);
-  cache_read_write (READ, inode->sector, inode->sector+1, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
+  cache_read_write (READ, inode->sector, total_sectors, META_DATA, disk_inode, 0, 0, 0, BLOCK_SECTOR_SIZE);
   block_sector_t sec_num;
   sec_num = disk_inode->parent_sector_number;
   free (disk_inode);
